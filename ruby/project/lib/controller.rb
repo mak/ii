@@ -1,10 +1,7 @@
-#require 'template'
-
-module ChujWieCo
+module Mouse
    class Controller
 
       def initialize (request, response)
-	 p request.class
 	 @request,@response = request,response
       end
 

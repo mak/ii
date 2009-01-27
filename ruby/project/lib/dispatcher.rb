@@ -1,10 +1,8 @@
-#require 'controller'
-
-module ChujWieCo
+module Mouse
    class Dispatcher
       
       def initialize(routes,appName)
-	 @routes = ChujWieCo::URLResolver.new(routes,appName)
+	 @routes = Mouse::URLResolver.new(routes,appName)
       end
 
       def call(envoirment)
@@ -30,9 +28,10 @@ module ChujWieCo
 #	    p reqPath
 #	    p regexp
 #	    p @appName
-	    if md = reqPath.match(regexp.sub(/\/\$/,'$'))
+	    reqPath = reqPath + '/' if reqPath[reqPath.size-1..reqPath.size-1] != '/'
+	    if md = reqPath.match(regexp)
 	       regexp =~ /[a-z0-9]+/
-	       if $& != nil
+	       if $&
 		  action = $&
 	       else
 		  action = "index"

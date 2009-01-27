@@ -1,6 +1,4 @@
-require 'erb'
-
-module ChujWieCo
+module Mouse
    class Template
       
       def initialize(path,context)
