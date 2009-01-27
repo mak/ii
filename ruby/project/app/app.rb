@@ -1,4 +1,4 @@
-class App < ChujWieCo::Controller
+class App < Mouse::Controller
    def index
       renderText('Index')
    end
