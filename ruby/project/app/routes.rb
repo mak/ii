@@ -2,8 +2,11 @@
 
 routes = %w(
   ^/$
-  ^/index/$
-  ^/world/$	    
-  ^/foo/id/*$	 
+  ^/:index/$
+  ^/:world/$	    
+  ^/:foo/@id/*$
+  ^/:index/ssij/$
+  ^/:bar/$
 )
 
+## :controller, action, @variable 

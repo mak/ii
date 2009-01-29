@@ -1,5 +1,5 @@
 module Mouse
-   class Dispatcher
+   class Dispatcher 
       
       def initialize(routes,appName)
 	 @routes = Mouse::URLResolver.new(routes,appName)
@@ -18,32 +18,42 @@ module Mouse
 	 @appName = appName
 	
       end
-	 
+      
       def resolve(request,response)
 	 p @routes.inspect
 	 @routes.each do |regexp |
+
 	    regexp = regexp.gsub(/\*/,'(.*)')
-#	    p request.path_info
 	    reqPath = request.path_info
-#	    p reqPath
-#	    p regexp
-#	    p @appName
 	    reqPath = reqPath + '/' if reqPath[reqPath.size-1..reqPath.size-1] != '/'
-	    if md = reqPath.match(regexp)
-	       regexp =~ /[a-z0-9]+/
+
+	    if md = reqPath.match(regexp.sub(/:/,''))
+	       regexp =~ /:(\w)+/
+	       ctrlName = $&[1..$&.size]
+	       regexp =~ /\/(\w)+/
 	       if $&
-		  action = $&
+		  action = $&[1..$&.size]
 	       else
 		  action = "index"
 	       end
-#	       p action
-	       controller = Object.class_eval("#{@appName}")
+	       p action
+
+	       if ctrlName == ''
+		  ctrlName = 'indexController'
+	       else
+		  ctrlName = ctrlName + 'Controller'
+	       end
+
+	       require 'controllers/' + ctrlName + '.rb' #laizy class loading?
+
+	       #p ctrlName
+	       controller = Object.class_eval("#{Mouse::Helpers.new(ctrlName).fstUpper}")
 	       begin 
 		  callable = controller.new(request,response)
 		  if callable.respond_to?(action)
 		    return callable.process(action, md.captures)
-		  else
-		    return HTTPError.new(request,response).process(:http404)
+    		  else
+		    return callable.process(:defResponse)
 		  end
 	       rescue => e
 		  return HTTPError.new(request, response).process(:http500,e)

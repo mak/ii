@@ -1,15 +1,30 @@
 module Mouse
    class Template
       
-      def initialize(path,context)
+      attr_reader :context
+
+      def initialize(file,context={})
 	 @context=context
-	 input = File.read(path)
-	 @template = ERB.new(input)
+	 @template = init file
       end
 
       def render(output)
-	 output << @template.evaluate(@context)
+	 output << @template.result(binding)
       end
+
+      def init file
+	 input = File.read(file)
+	 ERB.new(input,0,"%<>")
+      end
+
+      def exec
+	 @template.result(binding)
+      end
+
+      def include file
+	 (init file).result(binding)
+      end
+
    end
 end
 

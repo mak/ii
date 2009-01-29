@@ -1,6 +1,6 @@
-$: << '../lib'
+($: << '../lib') << './lib'
 
-%w(rack erb controller dispatcher tmpdir).map! {|lib| require lib }
+%w(rack erb template controller dispatcher tmpdir helpers).map! {|lib| require lib }
 
 module Mouse 
    class Main
@@ -9,9 +9,9 @@ module Mouse
 	 routes = eval(File.read('routes.rb'))
 	 appName = Dir.getwd.gsub(/\/(.*)\//,'')
 	 
-	 require appName
+	 #require appName no longer needed?
 
-	 appName = fstUpper appName
+	 #appName = fstUpper appName
 	 #loadContrllers
 	 app = Rack::Builder.new {
 	    use Rack::CommonLogger, STDERR
@@ -25,9 +25,6 @@ module Mouse
 	 Rack::Handler::Mongrel.run(app,{:Host => 'localhost', :Port => 8080})
       end
 
-      def fstUpper str
-	 str[0..0].upcase + str[1..str.size]
-      end
    end
 end
 
