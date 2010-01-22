@@ -1,0 +1,48 @@
+
+ty : type. %name ty T.
+nat : ty.
+arr : ty -> ty -> ty.
+prod : ty -> ty -> ty.
+
+
+typeOf : exp -> ty -> type.
+%mode typeOf +E *T.
+typeOf/z : typeOf z nat.
+typeOf/s : typeOf N nat -> typeOf (s N) nat.
+typeOf/pair : typeOf E1 T1 -> typeOf E2 T2 -> typeOf (pair E1 E2) (prod T1 T2).
+typeOf/fst : typeOf E (prod T1 T2) -> typeOf (fst E) T1.
+typeOf/snd : typeOf E (prod T1 T2) -> typeOf (snd E) T2.
+typeOf/case : ({x : exp } typeOf x nat -> typeOf (E3 x) T ) -> typeOf E2 T -> typeOf E1 nat ->   typeOf (case E1 E2 E3) T.
+typeOf/lam : ({x:exp} typeOf x T1 -> typeOf (E x) T2) -> typeOf (lam E) (arr T1 T2).
+typeOf/app : typeOf E1 (arr T1 T2) -> typeOf E2 T1 -> typeOf (app E1 E2) T2.
+typeOf/letv : ({x:exp} typeOf x T1 -> typeOf (E2 x) T2) -> typeOf E1 T1 -> typeOf (letv E1 E2) T2.
+typeOf/letn : typeOf (E2 E1) T2 -> typeOf (letn E1 E2) T2.
+typeOf/fix : ({e:exp} typeOf e T -> typeOf (E e) T) -> typeOf (fix E) T.
+
+%block of-block :  some {T:ty} block {x:exp} {dx:typeOf x T} .
+%worlds (of-block) (typeOf _ _).
+
+preserv : eval E V -> typeOf E T -> typeOf V T -> type.
+%mode preserv +D +P -Q.
+preserv/z : preserv eval/z typeOf/z typeOf/z.
+preserv/s : preserv D P Q -> preserv (eval/s D) (typeOf/s P) (typeOf/s Q).
+preserv/pair : preserv D1 P1 Q1 -> preserv D2 P2 Q2 -> preserv (eval/pair D1 D2) (typeOf/pair P1 P2) (typeOf/pair Q1 Q2).
+preserv/fst : preserv D P (typeOf/pair Q1 Q2) -> preserv (eval/fst D) (typeOf/fst P) Q1.
+preserv/snd : preserv D P (typeOf/pair Q1 Q2) -> preserv (eval/snd D) (typeOf/snd P) Q2.
+preserv/case-z : preserv D2 P2 Q2 -> preserv (eval/case-z D1 D2) (typeOf/case P1 P2 P3) Q2.
+preserv/case-s : preserv (eval/case-s D3 D1 ) (typeOf/case P3 P2 P1) Q3
+		  <- preserv D1 P1 (typeOf/s Q1)  
+		  <- preserv D3 (P3 V1 Q1) Q3.
+		 
+preserv/lam : preserv eval/lam (typeOf/lam P) (typeOf/lam P).
+preserv/app : preserv (eval/app D3 D2 D1) (typeOf/app P1 P2) Q3 
+	       <- preserv D1 P1 (typeOf/lam Q1)  
+	       <- preserv D2 P2 Q2 
+	       <- preserv D3 (Q1 V2 Q2) Q3  .
+preserv/letv : preserv (eval/letv D2 D1) (typeOf/letv P2 P1) Q2
+		<- preserv D1 P1 Q1
+		<- preserv D2 (P2 V1 Q1) Q2.
+preserv/letn : preserv D P Q -> preserv (eval/letn D) (typeOf/letn P) Q.
+preserv/fix  : preserv D (P (fix E) (typeOf/fix P)) Q -> preserv (eval/fix D) (typeOf/fix P) Q.
+%worlds () (preserv _ _ _).
+%total D (preserv D _ _ ).

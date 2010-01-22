@@ -1,0 +1,58 @@
+exp : type.
+z : exp.
+s : exp -> exp.
+app : exp -> exp -> exp.
+pair : exp -> exp -> exp.
+fst : exp -> exp.
+snd : exp -> exp.
+lam : (exp -> exp) -> exp.
+case : exp -> exp -> (exp -> exp ) -> exp. %% e1 e2 (\x -> e3) => case e1 of z -> e2 | s n -> e3
+letv : exp -> (exp -> exp) -> exp. %% (\x -> e1) e 
+letn : exp -> (exp -> exp) -> exp. 
+fix : (exp -> exp ) -> exp.
+
+eval : exp -> exp -> type. 
+%mode eval +E -V.
+eval/z : eval z z .
+eval/s : eval E V -> eval (s E) (s V).
+eval/pair : eval E1 V1 -> eval E2 V2 -> eval (pair E1 E2) (pair V1 V2).
+eval/snd : eval E (pair V1 V2) -> eval (snd E) V2.
+eval/fst : eval E (pair V1 V2) -> eval (fst E) V1.
+eval/case-z : eval E1 z -> eval E2 V -> eval (case E1 E2 E3) V.
+eval/case-s : eval (E3 N) V ->  eval E1 (s N) -> eval (case E1 E2 E3) V.
+eval/lam : eval (lam E) (lam E).
+eval/app : eval (E1' V1) V ->  eval E2 V1 -> eval E1 (lam E1') -> eval (app E1 E2) V.
+eval/letv : eval (E2 V1) V -> eval E1 V1  -> eval (letv E1 E2) V.
+eval/letn : eval (E2 E1) V -> eval (letn E1 E2) V.
+eval/fix : eval (E (fix E)) V -> eval (fix E) V.
+%worlds () (eval _ _).
+
+
+val : exp -> type.
+%mode val +V.
+val/z : val z.
+val/s : val V -> val (s V).
+val/pair: val E1 -> val E2 -> val (pair E1 E2).
+val/lam : val (lam E).
+
+eval-val : eval E V -> val V -> type.
+%mode eval-val +E -V.
+eval-val/z : eval-val eval/z val/z.
+eval-val/s : eval-val E V -> eval-val (eval/s E) (val/s V) .
+eval-val/lam : eval-val eval/lam val/lam.
+eval-val/pair : eval-val E1 V1 -> eval-val E2 V2 -> eval-val (eval/pair E1 E2) (val/pair V1 V2).
+eval-val/fst : eval-val E (val/pair V1 V2) -> eval-val (eval/fst E) V1.
+eval-val/snd : eval-val E (val/pair V1 V2) -> eval-val (eval/snd E) V2.
+eval-val/app : eval-val E3 V -> eval-val (eval/app E3 E1 E2) V.
+eval-val/case-z : eval-val E2 V -> eval-val (eval/case-z E1 E2) V.
+eval-val/case-s : eval-val E2 V -> eval-val (eval/case-s E2 E1) V.
+eval-val/letv : eval-val E2 V -> eval-val (eval/letv E2 E1) V.
+eval-val/letn : eval-val E2 V -> eval-val (eval/letn E2) V.
+eval-val/fix : eval-val E V -> eval-val (eval/fix E) V.
+%worlds () (eval-val _ _) .
+%total E (eval-val E _ ).
+
+eq : exp -> exp -> type.
+eq/id : eq E E.
+
+eval-det : eval E V1 -> eval E V2 -> eq V1 V2.

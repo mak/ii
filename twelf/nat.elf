@@ -1,0 +1,44 @@
+nat : type.
+z : nat.
+s : nat -> nat.
+
+add : nat -> nat -> nat -> type.
+add/z : add z N N .
+add/s : add N M P -> add (s N) M (s P).
+
+
+rhzero : {N : nat } add N z N -> type.
+rhzero/z : rhzero z add/z.
+rhzero/s : rhzero (s N) (add/s D) <- rhzero N D.
+%mode rhzero +M -D.
+%worlds () (rhzero _ _).
+%total M (rhzero M _).
+
+rhsucc : add N M P -> add N (s M) (s P) -> type.
+rhsucc/z : rhsucc add/z add/z.
+rhsucc/s : rhsucc (add/s (D :add M N P)) (add/s D1) 
+	    <- rhsucc D (D1 : add M (s N) (s P)).
+%mode rhsucc +D1 -D2.
+%worlds () (rhsucc _ _).
+%total D (rhsucc D _ ).
+
+
+comm : add M N P -> add N M P -> type.
+comm/z : comm (add/z : add z M M ) D <- rhzero M D .
+comm/s : comm (add/s (D : add M N P)) D2 
+	  <- comm D (D1 : add N M P) 
+	  <- rhsucc D1 (D2 : add N (s M) (s P)).
+
+%mode comm +D1 -D2.
+%worlds () (comm _ _ ).
+%total D (comm D _ ).
+
+assoc : add N M P -> add M R S -> add N S T -> add P R T -> type.
+%% (n + m) + r = n + (m + r)
+%% n + m = p, m + r = t, n + t = s 
+%mode assoc +D1 +D2 -D3 -D4.
+assoc/z : assoc add/z D add/z D.
+assoc/s : assoc (add/s D1) D2 (add/s D3) (add/s D4)
+	   <- assoc D1 D2 D3 D4.
+%worlds () (assoc _ _ _ _).
+%total M (assoc M D _ _).
