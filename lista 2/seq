@@ -1,0 +1,18 @@
+#!/usr/bin/env escript
+
+main([End]) -> main(["1", End, "1"]);
+main([Start, End]) -> main([Start, End, "1"]);
+main([Start, End, Step]) -> io:format("~w\n", [seq(list_to_integer(Start), 
+                                 list_to_integer(End),
+                                 list_to_integer(Step))]).
+
+seq(Start, End, Step) when Start =< End ->
+    seq(End, Step, Start, [Start]).
+
+seq(End, Step, Last, Seq) ->
+    if
+        End >= Last + Step ->
+            New = Last + Step,
+            seq(End, Step, New, Seq ++ [New]);
+        true -> Seq
+    end.
