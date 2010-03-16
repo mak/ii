@@ -13,6 +13,7 @@ Section Zad3.
 
   Definition succ n := fun (f:A -> A ) (x:A) => f (n f x).
 
+
   Lemma succ_is_corrent : forall n:nat, succ (nat2num n) = nat2num(n+1).
   Proof.
     intros.
@@ -50,21 +51,60 @@ Section Zad3.
 
   Definition mul (n m : (A -> A) -> A -> A) := fun (f:A -> A) (x:A) => n (m f ) x. 
 
+
+  Lemma num_mult : forall n m: nat, nat2num( S m * n) = add (nat2num n) (nat2num(m * n)).
+  Proof.
+    intros.
+    simpl.
+    rewrite add_is_correct.
+    reflexivity.
+  Qed.
+  
+  Lemma add_mul : forall n m : nat, mul (nat2num (S n)) (nat2num m) = add (nat2num m) (mul (nat2num n) (nat2num m)).
+  Proof.
+    intros.
+    simpl.
+    unfold mul.
+    unfold add.
+    reflexivity.
+  Qed.
+
+
+  Lemma add_mult : forall n m : nat, add (nat2num m) (nat2num (m * n)) = nat2num (m + m * n ).
+  Proof.
+    intros.
+    rewrite <- add_is_correct.
+    reflexivity.
+  Qed.
+
+
+  Require Import Mult.
+
+
   Lemma mul_is_correct: forall n m: nat, mul (nat2num n) (nat2num m) = nat2num(m*n).
   Proof.
     intros.
     induction n.
     simpl.
     unfold mul;fold mul.
-    induction m.
+    rewrite (mult_0_r m).
     simpl.
     reflexivity.
-    simpl.
-    assumption.
-    unfold mul.
-    unfold nat2num;fold nat2num.
-    unfold mul in IHn.
-    simpl.
+    rewrite mult_comm.
+    unfold mult;fold mult.
+    rewrite mult_comm.
+    rewrite <- add_mult.
+    rewrite add_mul.
+    rewrite IHn.
+    reflexivity.
+  Qed.
+
+
+  
+    
+
+    
+
 End Zad3.
 
 Require Import Le.
