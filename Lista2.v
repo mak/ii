@@ -10,6 +10,7 @@ Section Zad1.
     induction x.
     assumption.
   Qed.
+End Zad1.
 
 Section Zad2.
 
@@ -107,7 +108,6 @@ Section Zad3.
   Qed.
 
 End Zad3.
-
 
 
 Section Zad4.
@@ -273,124 +273,51 @@ Section Zad6.
 
   Variable A : Type.
 
-  (* cos nie tak... *)
   Inductive tree : Type :=
   | leaf : A -> tree
-  | node : list tree  -> tree.
+  | node : nat -> (nat -> tree) -> tree. (* arnosc, funckja wyliczajaca syna *)
 
-  Fixpoint hight (t: tree) : nat :=
-    match t with
-      | leaf _ =>  0
-      | node xs => S (length xs)
+  Fixpoint fold_nat (B : Type )(f : nat -> B -> B)  (c : B) n := 
+    match n with
+      | 0   => c
+      | S m => f (S m) (fold_nat B f c m)
     end.
-
-  Lemma hight_leaf : forall (t:tree), hight t = 0 -> exists a:A, t = leaf a.
-  Proof.
-    intros.
-    induction t.
-    simpl.
-    exists a.
-    reflexivity.
-    induction l.
-    assert (hight (node nil) <> 0).
-    simpl.
-    intro.
-    inversion H0.
-    simpl in H;simpl in H0.
-    contradiction.
-    assert (hight (node (a::l)) <> 0).
-    simpl.
-    intro.
-    inversion H0.
-    simpl in H;simpl in H0.
-    contradiction.
-  Qed.
-
-  Lemma hight_node : forall (t:tree), (exists n:nat, hight t = 2 +n) -> exists l: list tree , t = node l /\ l <> nil. 
-  Proof.
-    intros.
-    induction t.
-    assert (forall n, hight (leaf a) <> S n).
-    intro.
-    simpl.
-    intro.
-    inversion H0.
-    simpl in H;simpl in H0.
-    elim H.
-    intros.
-    inversion H1.
-    exists l.
-    split.
-    reflexivity.
-    intro.
-    simpl in H.
-    elim H.
-    intro.
-    destruct l.
-    simpl.
-    intro.
-    inversion H1.
-    inversion H0.
-  Qed.
-    
-
 
   Fixpoint getLabel (t : tree) : list A :=
     match t with
       | leaf a => cons a nil
-      | node xs => let fix concatMap (l:list tree) :=
-                     match l with
-                       | nil => nil
-                       | cons x xs => getLabel x ++ concatMap xs
-                     end
-                   in concatMap xs
+      | node n fc => fold_nat (list A) (fun m l => getLabel (fc m) ++ l) (getLabel (fc 0)) n
     end.
 
-  Lemma S_eq : forall n m,  S n  = S m ->  n = m.
+  Lemma app_non_empty : forall l1 l2 :list A, l2 <> nil -> l1 ++ l2 <> nil.
   Proof.
     intros.
-    induction n.
-    induction m.
-    reflexivity.
-    discriminate.
-    injection H.
-    intro.
+    induction l1.
+    simpl.
     assumption.
+    simpl.
+    discriminate.
   Qed.
 
-  Lemma getLabel_non_empty : forall (n : nat ) (t: tree), (hight t = n )-> getLabel t <> nil.
+  Lemma getLabel_non_empty : forall t:tree , getLabel t <> nil.
   Proof.
     intros.
-    induction n.
-    assert (exists a:A, t = leaf a).
-    apply hight_leaf.
-    assumption.
-    elim H0.
-    intros.
-    rewrite  H1.
-    simpl.
-    intro.
-    inversion H2.
-    assert (exists l: list tree , t = node l /\ l <> nil).
-    apply  hight_node.
-    exists n.
     induction t.
-    simpl in H;inversion H.
-    induction l.
     simpl.
-    assert (1 <> 2).
-    intro.
-    inversion H0.
-    rewrite  S_eq.
     discriminate.
-  
-
-  Qed
-
+    simpl.
+    induction n.
+    simpl.
+    intro.
+    apply (H 0).
+    assumption.
+    simpl.
+    apply app_non_empty.
+    assumption.
+  Qed.
 End Zad6.
+
+
     
-
-
-
 
 
