@@ -47,10 +47,8 @@ Section Zad3.
     unfold succ.
     reflexivity.
     simpl.
-    unfold succ.
-    unfold nat2num;fold nat2num.
-    unfold succ in IHn;fold succ in IHn.
     rewrite <- IHn.
+    unfold succ.
     reflexivity.
   Qed.
 
@@ -61,17 +59,15 @@ Section Zad3.
     intros.
     induction n.
     simpl.
-    unfold add;fold add.
+    unfold add.
     induction m.
     simpl.
     reflexivity.
     unfold nat2num;fold nat2num.
     reflexivity.
-    unfold add.
-    unfold nat2num;fold nat2num.
-    unfold add in IHn.
     simpl.
     rewrite <- IHn.
+    unfold add.
     reflexivity.
   Qed.
 
@@ -98,7 +94,7 @@ Section Zad3.
     intros.
     induction n.
     simpl.
-    unfold mul;fold mul.
+    unfold mul.
     reflexivity.
     unfold mult;fold mult.
     rewrite <- add_mult.
