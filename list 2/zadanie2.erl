@@ -37,7 +37,10 @@ format(Words, Width, _, Lines) ->
 
 make_line(Words, Width) ->
     {Taken, Rest} = take_words(Words, Width),
-    {fill_to_width(Taken, Width), Rest}.
+    if
+        Rest == [] -> {string:join(Taken, " "), []};
+        true -> {fill_to_width(Taken, Width), Rest}
+    end.
 
 fill_to_width([], _) -> "";
 fill_to_width([Word], _) -> Word;
@@ -48,16 +51,16 @@ fill_to_width([Word|Words], Width) ->
     M = (Width - WordsWidth) rem (length(Words)),
     if
         M == 0 -> string:join([Word|Words], lists:duplicate(N, 32));
-        M > 0  -> Word ++ join(Words, N, M)
+        M > 0  -> join([Word|Words], N, M)
     end.
 
 join([], _, _) -> "";
 
 join(Words, N, 0) ->
-    lists:duplicate(N, 32) ++ string:join(Words, lists:duplicate(N, 32));
+    string:join(Words, lists:duplicate(N, 32));
 
 join([Word|Words], N, M) when M > 0 ->
-    join([[32|Word]|Words], N, M - 1).
+    Word ++ lists:duplicate(N + 1, 32) ++ join(Words, N, M - 1).
 
 take_words(Words, Width) ->
     take_words(Words, Width, []).
