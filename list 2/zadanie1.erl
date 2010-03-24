@@ -27,23 +27,18 @@ rozklad(N) when is_integer(N) ->
 
 rozklad(N, D, L) when D > N -> L;
 rozklad(N, D, L) ->
-   Pierwsza = pierwsza(D),
-   if  
-       Pierwsza == true -> 
-           Stopien = stopien(N, D),
-           if
-               Stopien > 0  -> [{D, Stopien} | rozklad(N, D + 1, L)];
-               Stopien == 0 -> rozklad(N, D + 1, L)
+   case pierwsza(D) of
+       true -> 
+           case stopien(N, D) of
+               S when S > 0  -> [{D, S} | rozklad(N, D + 1, L)];
+               0 -> rozklad(N, D + 1, L)
            end;
-       true -> rozklad(N, D + 1, L)
+       false -> rozklad(N, D + 1, L)
    end.
 
 stopien(0, _) -> 0;
-stopien(N, D) -> 
-    if 
-        (N rem D == 0) -> 1 + stopien(N div D, D);
-        true -> 0
-    end.
+stopien(N, D) when N rem D == 0 -> 1 + stopien(N div D, D);
+stopien(_, _) -> 0.
 
 pierwsza(N) when is_integer(N) -> pierwsza(N, 2).
 

@@ -9,11 +9,10 @@ main([Width, Indent]) -> loop(list_to_integer(Width),
                                 list_to_integer(Indent)).
 
 loop(Width, Indent) ->
-    Par = get_paragraph(),
-    if
-        Par == eof -> ok;
-        Par == "" -> loop(Width, Indent);
-        true -> 
+    case get_paragraph() of
+        eof -> ok;
+        ""  -> loop(Width, Indent);
+        Par -> 
             io:format("~s\n\n", [format_paragraph(Par, Width, Indent)]),
             loop(Width, Indent)
     end.
@@ -29,17 +28,15 @@ format(Words, Width, Indent, []) ->
     format(Rest, Width, 0, [Indented]);
 
 format(Words, Width, _, Lines) ->
-    {Line, Rest} = make_line(Words, Width),
-    if
-        Line == "" -> Lines;
-        true -> format(Rest, Width, 0, [Line|Lines])
+    case make_line(Words, Width) of
+        {"", _} -> Lines;
+        {Line, Rest} -> format(Rest, Width, 0, [Line|Lines])
     end.
 
 make_line(Words, Width) ->
-    {Taken, Rest} = take_words(Words, Width),
-    if
-        Rest == [] -> {string:join(Taken, " "), []};
-        true -> {fill_to_width(Taken, Width), Rest}
+    case take_words(Words, Width) of
+        {Taken, []}   -> {string:join(Taken, " "), []};
+        {Taken, Rest} -> {fill_to_width(Taken, Width), Rest}
     end.
 
 fill_to_width([], _) -> "";
@@ -48,19 +45,18 @@ fill_to_width([Word|Words], Width) ->
     WordsWidth = lists:foldl(fun(S, X) -> 
                 X + length(S) end, length(Word), Words),
     N = (Width - WordsWidth) div (length(Words)),
-    M = (Width - WordsWidth) rem (length(Words)),
-    if
-        M == 0 -> string:join([Word|Words], lists:duplicate(N, 32));
-        M > 0  -> join([Word|Words], N, M)
+    case (Width - WordsWidth) rem (length(Words)) of
+        0 -> string:join([Word|Words], lists:duplicate(N, 32));
+        M when M > 0 -> join([Word|Words], N, M)
     end.
 
 join([], _, _) -> "";
 
 join(Words, N, 0) ->
-    string:join(Words, lists:duplicate(N, 32));
+    string:join(Words, lists:duplicate(N, $ ));
 
 join([Word|Words], N, M) when M > 0 ->
-    Word ++ lists:duplicate(N + 1, 32) ++ join(Words, N, M - 1).
+    Word ++ lists:duplicate(N + 1, $ ) ++ join(Words, N, M - 1).
 
 take_words(Words, Width) ->
     take_words(Words, Width, []).
@@ -74,23 +70,20 @@ take_words([Word|Words], Width, Taken) when length(Word) =< Width ->
 take_words(Words, _, Taken) -> {lists:reverse(Taken), Words}.
 
 get_line() ->
-    Line = io:get_line(""),
-    if
-        Line == eof -> eof;
-        true -> string:strip(string:strip(Line, both, 10), both)
+    case io:get_line("") of
+        eof -> eof;
+        Line -> string:strip(string:strip(Line, both, 10), both)
     end.
 
 get_paragraph() -> 
-    Line = get_line(),
-    if
-        Line == eof -> eof;
-        true -> get_paragraph(Line)
+    case get_line() of
+        eof -> eof;
+        Line -> get_paragraph(Line)
     end.
 
 get_paragraph(Par) -> 
-    Line = get_line(),
-    if
-        Line == eof -> Par;
-        Line == "" -> Par;
-        true -> get_paragraph(string:concat(Par, Line))
+    case get_line() of
+        eof -> Par;
+        "" -> Par;
+        Line -> get_paragraph(string:concat(Par, Line))
     end.
