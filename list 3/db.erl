@@ -18,7 +18,16 @@ select(DB, Pred) ->
     try
         {ok, lists:filter(fun({_, Row}) -> Pred(Row) end, DB#db.data)}
     catch
-        _ -> {error, bad_query}
+        _:_ -> {error, bad_query}
+    end.
+
+
+select(DB, Pred, Field) ->
+    try
+        {ok, lists:filter(fun({_, Row}) -> Pred(element(Field,Row)) end, 
+                DB#db.data)}
+    catch
+        _:_ -> {error, bad_query}
     end.
 
 
@@ -28,7 +37,7 @@ delete(DB, Pred) ->
         {Deleted, Remained} = lists:partition(DbPred, DB#db.data),
         {ok, DB#db{data = Remained}, Deleted}
     catch
-        _ -> {error, wrong_query}
+        _:_ -> {error, wrong_query}
     end.
 
 map_pred([], _, _) -> [];
@@ -51,5 +60,22 @@ update(DB, Pred, Func) ->
         NewData = lists:map(DbPred, DB#db.data),
         {ok, DB#db{data = NewData}, Updated}
     catch
-        _ -> {error, wrong_query}
+        _:_ -> {error, wrong_query}
+    end.
+
+
+update(DB, Pred, Func, Field) ->
+    try
+        DbPred = fun({Id, Row}) -> 
+                case Pred(element(Field, Row)) of
+                        true -> {Id, Func(element(Field, Row))};
+                        false -> {Id, Row}
+                    end
+                 end,
+                 Updated = lists:filter(fun({_, Row}) -> Pred(element(Field, Row)) end, 
+            DB#db.data),
+        NewData = lists:map(DbPred, DB#db.data),
+        {ok, DB#db{data = NewData}, Updated}
+    catch
+        _:_ -> {error, wrong_query}
     end.
