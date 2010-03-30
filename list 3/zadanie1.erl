@@ -82,23 +82,43 @@ print_ip_header(IP) when is_record(IP, ip_header) ->
     end.
 
 
-read_ip_packet() -> 
-    [Byte] = read_bytes(1),
-    <<Version:4, HeaderLength:4>> = <<Byte>>,
-    [ToS] = read_bytes(1),
-    TotalLength = bytes_to_integer(read_bytes(2)),
-    Identification = bytes_to_integer(read_bytes(2)),
-    Flags = bytes_to_integer(read_bytes(2)),
-    [TTL] = read_bytes(1),
-    Protocol = case read_bytes(1) of
-        [1] -> icmp;
-        [6] -> tcp;
-        [17] -> udp;
+sum_16_bit([]) -> 0;
+sum_16_bit([A, B|Rest]) ->
+	bytes_to_integer([A, B]) + sum_16_bit(Rest).
+
+
+read_ip_packet() ->
+	Bytes = read_bytes(12),
+    Header = bytes_to_integer(Bytes),
+	<<Version:4, HeaderLength:4, ToS:8, TotalLength:16, Identification:16, 
+	Flags:16, TTL:8, P:8, Checksum:16>> = <<Header:96>>,
+
+    Protocol = case P of
+        1 -> icmp;
+        6 -> tcp;
+        17 -> udp;
         true -> raw_data
     end,
-    Checksum = bytes_to_integer(read_bytes(2)),
-    SrcIP = read_bytes(4),
-    DestIP = read_bytes(4),
+	
+	SrcIP = read_bytes(4),
+    [B1, B2, B3, B4] = SrcIP,
+	DestIP = read_bytes(4),
+	[B5, B6, B7, B8] = DestIP,
+
+
+	C = sum_16_bit(Bytes) + bytes_to_integer([B1, B2]) +
+		bytes_to_integer([B3, B4]) + bytes_to_integer([B5, B6]) +
+		bytes_to_integer([B7, B8]),
+
+	<<Tmp:16>> = <<C:16>>,
+    
+	C2 = C div 65536 + Tmp,
+
+	io:format("C: ~w\nTmp: ~w\nC2: ~w\n", [C, Tmp, C2]),
+	C3 = C2 + C2 div 65536,
+
+	io:format("My checksum: ~w\n", [65535 - C3]),
+
     Additional = read_bytes(4 * HeaderLength - 20),
     Data = case Protocol of 
         tcp -> read_tcp_packet(TotalLength - 4 * HeaderLength);
@@ -112,10 +132,8 @@ read_ip_packet() ->
    
 
 read_udp_packet() ->
-    SrcPort = bytes_to_integer(read_bytes(2)),
-    DstPort = bytes_to_integer(read_bytes(2)),
-    Length = bytes_to_integer(read_bytes(2)),
-    Checksum = bytes_to_integer(read_bytes(2)),
+    Header = bytes_to_integer(read_bytes(8)),
+    <<SrcPort:16, DstPort:16, Length:16, Checksum:16>> = <<Header:64>>,
     Data = read_bytes(Length - 8),
     {SrcPort, DstPort, Length, Checksum, Data}.
 
@@ -131,11 +149,8 @@ print_udp_packet({SrcPort, DstPort, Length, Checksum, Data}) ->
 
 
 read_icmp_packet() -> 
-    [Type] = read_bytes(1),
-    [Code] = read_bytes(1),
-    Checksum = bytes_to_integer(read_bytes(2)),
-    ID = bytes_to_integer(read_bytes(2)),
-    Sequence = bytes_to_integer(read_bytes(2)),
+	Header = bytes_to_integer(read_bytes(8)),
+	<<Type:8, Code:8, Checksum:16, ID:16, Sequence:16>> = <<Header:64>>,
     {Type, Code, Checksum, ID, Sequence}.
 
 
@@ -156,21 +171,15 @@ tcp_flags_to_string(Flags) ->
     L = [{CWR, "CWR"}, {ECE, "ECE"}, {URG, "URG"}, {ACK, "ACK"}, 
         {PSH, "PSH"}, {RST, "RST"}, {SYN, "SYN"}, {FIN, "FIN"}],
 
-    L2 = lists:filter(fun({A, B}) -> A == 1 end, L),
+    L2 = lists:filter(fun({A, _}) -> A == 1 end, L),
 
-    string:join(lists:map(fun({A, B}) -> B end, L2), " ").
+    string:join(lists:map(fun({_, B}) -> B end, L2), " ").
 
 
 read_tcp_packet(Length) ->
-    SrcPort = bytes_to_integer(read_bytes(2)),
-    DstPort = bytes_to_integer(read_bytes(2)),
-    SeqNum = bytes_to_integer(read_bytes(4)),
-    AckNum = bytes_to_integer(read_bytes(4)),
-    Foo = bytes_to_integer(read_bytes(2)),
-    <<Offset:4, Reserved:4, Flags:8>> = <<Foo:16>>,
-    WindowSize =  bytes_to_integer(read_bytes(2)),
-    Checksum =  bytes_to_integer(read_bytes(2)),
-    UrgentPointer = bytes_to_integer(read_bytes(2)),
+	Header = bytes_to_integer(read_bytes(20)),
+	<<SrcPort:16, DstPort:16, SeqNum:32, AckNum:32, Offset:4, Reserved:4, 
+	  Flags:8, WindowSize:16, Checksum:16, UrgentPointer:16>> = <<Header:160>>,
     Additional = bytes_to_hex(read_bytes(Offset * 4 - 20)),
     Data = read_bytes(Length - Offset * 4),
     [Data, SrcPort, DstPort, SeqNum, AckNum, Offset, Reserved, 
