@@ -32,6 +32,10 @@ byte_to_hex(N) when (N >= 0) and (N =< 255) ->
     hex_digit(A) ++ hex_digit(B).
 
 
+bytes_to_hex(Bytes) -> 
+    string:join(lists:map(fun(X) -> byte_to_hex(X) end, Bytes), " ").
+
+
 print_ip_header(IP) when is_record(IP, ip_header) ->
     
     Version = case (IP#ip_header.version) of
@@ -70,9 +74,7 @@ print_ip_header(IP) when is_record(IP, ip_header) ->
         tcp -> print_tcp_packet(IP#ip_header.data);
         udp -> print_udp_packet(IP#ip_header.data);
         icmp-> print_icmp_packet(IP#ip_header.data);
-        raw_data -> string:join(lists:map(fun(X) -> byte_to_hex(X) end, 
-                    IP#ip_header.data), " ")
-
+        raw_data -> io:format("~s\n", [bytes_to_hex(IP#ip_header.data)])
     end.
 
 
@@ -95,7 +97,7 @@ read_ip_packet() ->
     DestIP = read_bytes(4),
     Additional = read_bytes(4 * HeaderLength - 20),
     Data = case Protocol of 
-        tcp -> read_tcp_packet();
+        tcp -> read_tcp_packet(TotalLength - 4 * HeaderLength);
         udp -> read_udp_packet();
         icmp -> read_icmp_packet();
         true -> read_bytes(TotalLength - 4 * HeaderLength)
@@ -115,17 +117,13 @@ read_udp_packet() ->
 
 
 print_udp_packet({SrcPort, DstPort, Length, Checksum, Data}) ->
-
-    PrettyData =  string:join(lists:map(fun(X) -> byte_to_hex(X) end, 
-                              Data), " "),
-
     io:format("UDP Header:\n--------------------\n"
               "Source port: ~w\n"
               "Destination port: ~w\n"
               "Length: ~w\n"
               "Checksum: ~w\n"
               "\n~s\n",
-              [SrcPort, DstPort, Length, Checksum, PrettyData]).
+              [SrcPort, DstPort, Length, Checksum, bytes_to_hex(Data)]).
 
 
 read_icmp_packet() -> 
@@ -147,8 +145,32 @@ print_icmp_packet(Packet) ->
               tuple_to_list(Packet)).
 
 
-read_tcp_packet() -> {}.
-print_tcp_packet(_) -> {}.
+read_tcp_packet(Length) ->
+    SrcPort = bytes_to_integer(read_bytes(2)),
+    DstPort = bytes_to_integer(read_bytes(2)),
+    SeqNum = bytes_to_integer(read_bytes(4)),
+    AckNum = bytes_to_integer(read_bytes(4)),
+    Foo = bytes_to_integer(read_bytes(2)),
+    WindowSize =  bytes_to_integer(read_bytes(2)),
+    Checksum =  bytes_to_integer(read_bytes(2)),
+    UrgentPointer = bytes_to_integer(read_bytes(2)),
+    Data = read_bytes(Length - 20),
+    [Data, SrcPort, DstPort, SeqNum, AckNum, Foo, WindowSize, Checksum,
+        UrgentPointer].
+
+
+print_tcp_packet([Data|Packet]) ->
+    io:format("TCP Header:\n--------------------\n"
+              "Source port: ~w\n"
+              "Destination port: ~w\n"
+              "Sequence number: ~w\n"
+              "Acknowledgment number: ~w\n"
+              "Foo: ~w\n"
+              "Window size: ~w\n"
+              "Checksum: ~w\n"
+              "Urgent pointer: ~w\n",
+              Packet),
+    io:format("\n~s\n", [bytes_to_hex(Data)]).
 
 
 is_hex_digit(D) ->
@@ -184,7 +206,7 @@ read_bytes(N) when N > 0 ->
                     [Byte | read_bytes(N - 1)];
                 false -> input_error
             end;
-        true -> read_error
+        eof -> []
     end.
    
 bytes_to_integer(Bytes) -> 
