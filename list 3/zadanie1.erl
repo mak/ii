@@ -32,8 +32,12 @@ byte_to_hex(N) when (N >= 0) and (N =< 255) ->
     hex_digit(A) ++ hex_digit(B).
 
 
-bytes_to_hex(Bytes) -> 
+bytes_to_hex(Bytes) ->
     string:join(lists:map(fun(X) -> byte_to_hex(X) end, Bytes), " ").
+
+
+print_data(Bytes) -> 
+    io:format("\n~s\n", [bytes_to_hex(Bytes)]).
 
 
 print_ip_header(IP) when is_record(IP, ip_header) ->
@@ -74,7 +78,7 @@ print_ip_header(IP) when is_record(IP, ip_header) ->
         tcp -> print_tcp_packet(IP#ip_header.data);
         udp -> print_udp_packet(IP#ip_header.data);
         icmp-> print_icmp_packet(IP#ip_header.data);
-        raw_data -> io:format("~s\n", [bytes_to_hex(IP#ip_header.data)])
+        raw_data -> print_data(IP#ip_header.data)
     end.
 
 
@@ -121,9 +125,9 @@ print_udp_packet({SrcPort, DstPort, Length, Checksum, Data}) ->
               "Source port: ~w\n"
               "Destination port: ~w\n"
               "Length: ~w\n"
-              "Checksum: ~w\n"
-              "\n~s\n",
-              [SrcPort, DstPort, Length, Checksum, bytes_to_hex(Data)]).
+              "Checksum: ~w\n",
+              [SrcPort, DstPort, Length, Checksum]),
+    print_data(Data).
 
 
 read_icmp_packet() -> 
@@ -145,18 +149,33 @@ print_icmp_packet(Packet) ->
               tuple_to_list(Packet)).
 
 
+tcp_flags_to_string(Flags) ->
+    <<CWR:1, ECE:1, URG:1, ACK:1, PSH:1, RST:1, 
+        SYN:1, FIN:1>> = <<Flags:8>>,
+
+    L = [{CWR, "CWR"}, {ECE, "ECE"}, {URG, "URG"}, {ACK, "ACK"}, 
+        {PSH, "PSH"}, {RST, "RST"}, {SYN, "SYN"}, {FIN, "FIN"}],
+
+    L2 = lists:filter(fun({A, B}) -> A == 1 end, L),
+
+    string:join(lists:map(fun({A, B}) -> B end, L2), " ").
+
+
 read_tcp_packet(Length) ->
     SrcPort = bytes_to_integer(read_bytes(2)),
     DstPort = bytes_to_integer(read_bytes(2)),
     SeqNum = bytes_to_integer(read_bytes(4)),
     AckNum = bytes_to_integer(read_bytes(4)),
     Foo = bytes_to_integer(read_bytes(2)),
+    <<Offset:4, Reserved:4, Flags:8>> = <<Foo:16>>,
     WindowSize =  bytes_to_integer(read_bytes(2)),
     Checksum =  bytes_to_integer(read_bytes(2)),
     UrgentPointer = bytes_to_integer(read_bytes(2)),
-    Data = read_bytes(Length - 20),
-    [Data, SrcPort, DstPort, SeqNum, AckNum, Foo, WindowSize, Checksum,
-        UrgentPointer].
+    Additional = bytes_to_hex(read_bytes(Offset * 4 - 20)),
+    Data = read_bytes(Length - Offset * 4),
+    [Data, SrcPort, DstPort, SeqNum, AckNum, Offset, Reserved, 
+        tcp_flags_to_string(Flags), WindowSize, Checksum, 
+        UrgentPointer, Additional].
 
 
 print_tcp_packet([Data|Packet]) ->
@@ -165,12 +184,16 @@ print_tcp_packet([Data|Packet]) ->
               "Destination port: ~w\n"
               "Sequence number: ~w\n"
               "Acknowledgment number: ~w\n"
-              "Foo: ~w\n"
+              "Offset: ~w\n"
+              "Reserved: ~w\n"
+              "Flags: ~s\n"
               "Window size: ~w\n"
               "Checksum: ~w\n"
-              "Urgent pointer: ~w\n",
+              "Urgent pointer: ~w\n"
+              "Additional: ~s\n",
               Packet),
-    io:format("\n~s\n", [bytes_to_hex(Data)]).
+
+     print_data(Data).
 
 
 is_hex_digit(D) ->
