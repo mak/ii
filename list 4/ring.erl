@@ -1,44 +1,72 @@
 -module(ring).
--export([start/3, create_ring/3, loop/3]).
+-export([start/4, create_ring/4, loop/5]).
 
 
-start(Svisor, Stats, Size) 
+start(RingID, Svisor, Stats, Size) 
 when is_pid(Svisor), is_pid(Stats), is_integer(Size),Size > 0 ->
-    spawn(ring, create_ring, [Svisor, Stats, Size]).
+    spawn(ring, create_ring, [RingID, Svisor, Stats, Size]).
 
 
-create_ring(Svisor, Stats, Size) -> 
-    RingID = 1,
+create_ring(RingID, Svisor, Stats, Size) -> 
     Stats ! {ring, start, RingID, Size, now()},
 
-    Last = create_ring(Svisor, Stats, Size - 1, self()),
+    Last = create_ring(RingID, Svisor, Stats, Size - 1, self()),
 
     Stats ! {ring, stop, RingID, Size, now()},
     Svisor ! {ring, created, RingID},
     
-    loop(0, Last, Stats).
+    loop(RingID, 0, Last, Svisor, Stats).
 
 
-create_ring(_, _, 0, Next) -> Next;
-create_ring(Svisor, Stats, Size, Next) ->
-    create_ring(Svisor, Stats, Size - 1, 
-        spawn(ring, loop, [Size, Next, Stats])).
+create_ring(_, _, _, 0, Next) -> Next;
+create_ring(RingID, Svisor, Stats, Size, Next) ->
+    create_ring(RingID, Svisor, Stats, Size - 1, 
+        spawn(ring, loop, [RingID, Size, Next, Svisor, Stats])).
 
 
-loop(N, Next, Statistics) when is_pid(Next), is_pid(Statistics) ->
-    io:format("Thread ~w ~w: listening, next is ~w\n", [N, self(),Next]), 
+loop(RingID, N, Next, Svisor, Statistics) 
+when is_pid(Next), is_pid(Statistics), is_pid(Svisor) ->
     receive 
         stop ->
-            io:format("Thread ~w: stopping\n", [N]),
-            Next ! stop;
-            
-        {TokenID, 0, _} ->
-            io:format("Thread ~w received token with 0 steps\n", [N]),
-            Statistics ! {token, stop, TokenID, 0, N, now()},
-            loop(N, Next, Statistics);
+            io:format("Ring ~w: stopping\n", [RingID]),
+            Next ! stop_no_wait,
+            receive
+                stop_no_wait ->
+                    io:format("Ring: stopped, sending msg to svisor: ~w\n", [Svisor]),
+                    Svisor ! {ring, destroyed, RingID}
+            end;
 
-        {TokenID, Steps, StopTime} -> 
-            io:format("Thread ~w: received token with steps: ~w\n", [N, Steps]),
-            Next ! {TokenID, Steps - 1, StopTime},
-            loop(N, Next, Statistics)
+        stop_no_wait ->
+            Next ! stop_no_wait;
+
+        {TokenID, MaxSteps, StopTime} ->
+            Statistics ! {token, start, TokenID, MaxSteps, now()},
+            self() ! {TokenID, 0, MaxSteps, StopTime},
+            loop(RingID, N, Next, Svisor, Statistics);
+
+        {TokenID, MaxSteps, MaxSteps, _} ->
+            Statistics ! {token, stop, TokenID, MaxSteps, N, now()},
+            loop(RingID, N, Next, Svisor, Statistics);
+
+        {TokenID, Steps, MaxSteps, undefined} ->
+            Next ! {TokenID, Steps + 1, MaxSteps, undefined},
+            loop(RingID, N, Next, Svisor, Statistics);
+
+        {TokenID, Steps, undefined, StopTime} ->
+            case timer:now_diff(StopTime, now()) of
+                Diff when Diff > 0 ->
+                    Next ! {TokenID, Steps + 1, undefined, StopTime};
+                Diff when Diff =< 0 ->
+                    Statistics ! {token, stop, TokenID, Steps, N, now()}
+            end,
+            loop(RingID, N, Next, Svisor, Statistics);
+
+        {TokenID, Steps, MaxSteps, StopTime} ->
+            case timer:now_diff(StopTime, now()) of
+                Diff when Diff > 0 ->
+                    Next ! {TokenID, Steps + 1, MaxSteps, StopTime};
+                Diff when Diff =< 0 ->
+                    Statistics ! {token, stop, TokenID, Steps, N, now()}
+            end,
+            loop(RingID, N, Next, Svisor, Statistics)
     end.
