@@ -6,40 +6,71 @@
 
 start() ->
     Statistics = statistics:start(),
-    {ok, spawn(benchmark, loop, [Statistics, self(), 1, 1])}.
+    {ok, spawn(benchmark, loop, [Statistics, dict:from_list([]), 1, 1])}.
 
-loop(Statistics, Ring, TokenID, RingID) ->
+loop(Statistics, Rings, TokenID, NextRingID) ->
     receive
-        {token, Steps, undefined} ->
-            Ring ! {TokenID, Steps, undefined},
-            loop(Statistics, Ring, TokenID + 1, RingID);
+        list_rings ->
+            io:format("Available rings: ~w\n", [dict:fetch_keys(Rings)]),
+            loop(Statistics, Rings, TokenID, NextRingID);
 
-        {token, Steps, Seconds} -> 
-            {MegaSec, Sec, Milisec} = now(),
-            StopTime = {MegaSec + ((Sec + Seconds) div 1000000),
-               (Sec + Seconds) rem 1000000, Milisec},
-            Ring ! {TokenID, Steps, StopTime},
-            loop(Statistics, Ring, TokenID + 1, RingID);
+        {token, _, undefined, undefined} ->
+            io:format("Error: you must define something!\n"),
+            loop(Statistics, Rings, TokenID, NextRingID);
+
+        {token, RingID, Steps, undefined} ->
+            case dict:find(RingID, Rings) of
+                {ok, Ring} -> Ring ! {TokenID, Steps, undefined};                    
+                error -> io:format("Error: no such ring\n")
+            end,
+            loop(Statistics, Rings, TokenID + 1, NextRingID);
+
+        {token, RingID, Steps, Seconds} -> 
+            case dict:find(RingID, Rings) of
+                {ok, Ring} ->
+                    {MegaSec, Sec, Milisec} = now(),
+                    StopTime = {MegaSec + ((Sec + Seconds) div 1000000),
+                        (Sec + Seconds) rem 1000000, Milisec},
+                    Ring ! {TokenID, Steps, StopTime};
+                error -> io:format("Error: no such ring\n")
+            end,
+            loop(Statistics, Rings, TokenID + 1, NextRingID);
 
         {start, Size} ->
-            NewRing = ring:start(RingID, self(), Statistics, Size),
+            NewRing = ring:start(NextRingID, self(), Statistics, Size),
             receive 
-                {ring, created, RingID} ->
-                    io:format("Ring ~w created with size: ~w\n", [RingID, Size]),
-                    Ring ! stop,
-                    loop(Statistics, NewRing, TokenID, RingID + 1)
+                {ring, created, NextRingID} ->
+                    io:format("Ring ~w created with size: ~w\n", 
+                        [NextRingID, Size]),
+                    loop(Statistics, dict:store(NextRingID, NewRing, Rings),
+                            TokenID, NextRingID + 1)
             after
                 3000 -> 
-                    io:format("Ring ~w timeout!\n", [RingID]),
+                    io:format("Ring ~w timeout!\n", [NextRingID]),
                     NewRing ! stop,
-                    loop(Statistics, Ring, TokenID, RingID)
+                    loop(Statistics, Rings, TokenID, NextRingID)
             end;
             
+        {stop, RingID} ->
+            case dict:find(RingID, Rings) of
+                {ok, Ring} ->
+                    Ring ! stop,
+                    receive
+                        {ring, destroyed, RingID} ->
+                            io:format("Ring ~w destroyed\n", [RingID])
+                    after
+                        3000 ->
+                            io:format("Ring ~w timeout!\n", [RingID])
+                    end,
+                    loop(Statistics, dict:erase(RingID, Rings), TokenID, NextRingID);
+
+                error ->
+                    io:format("Error: no such ring\n"),
+                    loop(Statistics, Rings, TokenID, NextRingID)
+            end;
+
         stop ->
+            lists:map(fun({_, Ring}) -> Ring ! stop end, dict:to_list(Rings)),
             Statistics ! stop,
-            Ring ! stop,
-            receive
-                {ring, destroyed, DestroyedRingID} ->
-                    io:format("Ring ~w destroyed\n", [DestroyedRingID])
-            end
+            ok
     end.
