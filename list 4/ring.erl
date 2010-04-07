@@ -32,7 +32,7 @@ when is_pid(Next), is_pid(Statistics), is_pid(Svisor) ->
             Next ! stop_no_wait,
             receive
                 stop_no_wait ->
-                    io:format("Ring: stopped, sending msg to svisor: ~w\n", [Svisor]),
+                    io:format("Ring ~w: stopped\n", [RingID]),
                     Svisor ! {ring, destroyed, RingID}
             end;
 
