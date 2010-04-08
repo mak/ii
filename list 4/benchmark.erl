@@ -1,12 +1,11 @@
 -module(benchmark).
--export([start/0, loop/4]).
+-export([start/1, loop/4]).
 
 -import(statistics).
 -import(ring).
 
-start() ->
-    Statistics = statistics:start(),
-    {ok, spawn(benchmark, loop, [Statistics, dict:from_list([]), 1, 1])}.
+start(Statistics) ->
+    spawn(benchmark, loop, [Statistics, dict:new(), 1, 1]).
 
 loop(Statistics, Rings, TokenID, NextRingID) ->
     receive
@@ -70,7 +69,5 @@ loop(Statistics, Rings, TokenID, NextRingID) ->
             end;
 
         stop ->
-            lists:map(fun({_, Ring}) -> Ring ! stop end, dict:to_list(Rings)),
-            Statistics ! stop,
-            ok
+            lists:map(fun({_, Ring}) -> Ring ! stop end, dict:to_list(Rings))
     end.
