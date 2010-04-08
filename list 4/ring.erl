@@ -12,7 +12,7 @@ create_ring(RingID, Svisor, Stats, Size) ->
 
     Last = create_ring(RingID, Svisor, Stats, Size - 1, self()),
 
-    Stats ! {ring, stop, RingID, Size, now()},
+    Stats ! {ring, stop, RingID, now()},
     Svisor ! {ring, created, RingID},
     
     loop(RingID, 0, Last, Svisor, Stats).
@@ -40,7 +40,7 @@ when is_pid(Next), is_pid(Statistics), is_pid(Svisor) ->
             Next ! stop_no_wait;
 
         {TokenID, MaxSteps, StopTime} ->
-            Statistics ! {token, start, TokenID, MaxSteps, now()},
+            Statistics ! {token, start, TokenID, RingID, MaxSteps, now()},
             self() ! {TokenID, 0, MaxSteps, StopTime},
             loop(RingID, N, Next, Svisor, Statistics);
 
