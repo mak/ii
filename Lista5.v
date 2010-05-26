@@ -16,38 +16,30 @@ Section Zad1.
     end.
 
   Lemma R_c_lt : forall x y , R_c x y -> (connat x < connat y )%nat.
-  Proof.
+  Proof with (try omega;auto with zarith).
     intros;unfold connat;destruct H.
     remember (x-c) as xc ;remember (y-c) as yc.
-    assert (xc < yc ) by omega.
-    destruct (xc);destruct (yc);try subst;try omega.
+    assert (xc < yc )...
+    destruct (xc);destruct (yc);try subst...
 
-    assert (nat_of_P p > 0)%nat by apply lt_O_nat_of_P.
-    omega.
+    assert (nat_of_P p > 0)%nat by apply lt_O_nat_of_P....
 
-    assert (Zneg p < 0) by apply Zlt_neg_0.
-    omega.
+    assert (Zneg p < 0) by apply Zlt_neg_0...
 
-    assert (Zpos p > 0 ) by auto with zarith.
-    omega.
+    assert (Zpos p > 0 )...
 
     assert (nat_of_P p < nat_of_P p0)%nat.
       repeat rewrite Zpos_eq_Z_of_nat_o_nat_of_P in *.
-      apply inj_lt_rev.
-      omega.
+      apply inj_lt_rev...
     omega.
+    assert (Zneg p0 <= Zpos p) by apply Zle_neg_pos...
 
-    assert (Zneg p0 <= Zpos p) by apply Zle_neg_pos.
-    omega.
 
-    assert ( 0 <= y - c) by
-      auto with zarith.
+    assert ( 0 <= y - c)...
 
     assert ( y - c < 0 ) by
       (assert (Zneg p < 0) by (apply Zlt_neg_0);
-      rewrite <- Heqyc;auto).
-
-    omega.
+      rewrite <- Heqyc;auto)...
   Qed.
 
   Hint Resolve R_c_lt.
@@ -259,6 +251,8 @@ Section Zad3.
   Fixpoint sort_term t :=
     match t with
       | Plus (Atom n) t' => insert_term n (sort_term t')
+      | Plus t' (Atom n) => insert_term n (sort_term t')
+      | Plus t' t'' => Plus (sort_term t') (sort_term t'')
       | _ => t
     end.
 
@@ -282,16 +276,14 @@ Section Zad3.
 
   Lemma insert_term_corr : forall t n vm,
     interp vm (insert_term n t) = interp_var n vm  + interp vm t.
+  Proof with auto with arith.
     induction t; simpl; intros.
-      destruct leb;simpl in * ;auto with arith.
-    destruct t1;simpl.
-    destruct leb;simpl;auto with arith.
-    rewrite IHt2;auto with arith.
-    replace (interp_var i vm + interp vm t2) with (interp vm t2 + interp_var i vm)
-      by auto with arith.
-    rewrite <- plus_comm.
-    auto with arith.
-    auto.
+      destruct leb;simpl in *...
+    destruct t1;simpl...
+    destruct leb;simpl...
+    rewrite IHt2.
+    replace (interp_var i vm + interp vm t2) with (interp vm t2 + interp_var i vm)...
+    rewrite <- plus_comm...
   Qed.
 
   Hint Rewrite insert_term_corr : db.
@@ -299,6 +291,13 @@ Section Zad3.
     interp vm t = interp vm (sort_term t).
     induction t;simpl ;auto.
     destruct t1;intros;autorewrite with db;auto.
+    destruct t2;intros;autorewrite with db;auto.
+    rewrite <- IHt1.
+    simpl.
+    auto with arith.
+    rewrite IHt2,IHt1.
+    simpl.
+    auto.
   Qed.
 
   Hint Rewrite <- sort_term_corr_aux sort_term_corr_aux : db.
@@ -306,7 +305,7 @@ Section Zad3.
   Lemma sort_term_corr : forall t1 t2 vm,
     interp vm (sort_term t1) = interp vm (sort_term t2)
     -> interp vm t1 = interp vm t2.
-    intros t1 t2 vm;autorewrite with db;auto.
+    intros t1 t2 vm;autorewrite with db; auto.
   Qed.
 
   Ltac insert_atom atoms a :=
@@ -333,7 +332,7 @@ Section Zad3.
         let n := find_atom a xs in
           constr: (S n)
     end.
-
+vc
   Ltac model atoms v :=
     match v with
       | (?X1 + ?X2) =>
