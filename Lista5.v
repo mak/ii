@@ -1,5 +1,5 @@
 
-Require Import ZArith Wellfounded Wf_nat Arith.
+Require Import ZArith Wellfounded Arith.
 
 
 Section Zad1.
@@ -7,47 +7,28 @@ Section Zad1.
   Open Scope Z_scope.
   Parameter c : Z.
   Definition R_c  (x y : Z) := c <= y /\ x < y.
-  SearchAbout (Z -> nat).
-  Eval compute in Zabs_nat (-4).
 
-  (* 0 -> 1, neg -> 0, pos -> S pos*)
   Definition connat x :=
     match x - c with
       | 0 => S O
       | Zneg _ => O
       | Zpos p => S (nat_of_P p)
     end.
-(*
-  Lemma connat_inj : forall x y, connat x = connat y -> x -c = y -c.
+
+  Lemma R_c_lt : forall x y , R_c x y -> (connat x < connat y )%nat.
   Proof.
-    unfold connat;intros; destruct (x-c);destruct(y-c);auto;
-      try discriminate; try omega.
-
-    assert (nat_of_P p > 0)%nat by apply lt_O_nat_of_P.
-    omega.
-
-    assert (nat_of_P p > 0)%nat by apply lt_O_nat_of_P.
-    omega.
-
-    injection H.
-    intro.
-    assert (p = p0) by (apply nat_of_P_inj;auto).
-    congruence.
-
-    admit.
-  Qed.
-
-  Hint Resolve connat_inj.
-
-  Lemma R_c_lt_pos : forall x y , 0 <= x-c < y -c -> (connat x < connat y )%nat.
-  Proof.
-    intros;unfold connat;
-    destruct (x - c);destruct (y - c);try omega.
+    intros;unfold connat;destruct H.
+    remember (x-c) as xc ;remember (y-c) as yc.
+    assert (xc < yc ) by omega.
+    destruct (xc);destruct (yc);try subst;try omega.
 
     assert (nat_of_P p > 0)%nat by apply lt_O_nat_of_P.
     omega.
 
     assert (Zneg p < 0) by apply Zlt_neg_0.
+    omega.
+
+    assert (Zpos p > 0 ) by auto with zarith.
     omega.
 
     assert (nat_of_P p < nat_of_P p0)%nat.
@@ -59,89 +40,21 @@ Section Zad1.
     assert (Zneg p0 <= Zpos p) by apply Zle_neg_pos.
     omega.
 
-    assert (Zneg p < 0) by apply Zlt_neg_0.
+    assert ( 0 <= y - c) by
+      auto with zarith.
+
+    assert ( y - c < 0 ) by
+      (assert (Zneg p < 0) by (apply Zlt_neg_0);
+      rewrite <- Heqyc;auto).
+
     omega.
   Qed.
 
-  Lemma R_c_lt_neg_pos :forall x y,
-    x  - c < 0 <= y - c -> (connat x < connat y )%nat.
-    intros;unfold connat;
-    assert (x-c < y -c) by omega.
-    destruct (x - c);destruct (y - c);try omega.
-
-    assert (Zpos p > 0) by apply Zgt_pos_0.
-    omega.
-
-    assert (nat_of_P p < nat_of_P p0)%nat.
-      repeat rewrite Zpos_eq_Z_of_nat_o_nat_of_P in *.
-      apply inj_lt_rev.
-      omega.
-    omega.
-
-    assert (Zneg p0 <= Zpos p) by apply Zle_neg_pos.
-    omega.
-
-    assert (Zneg p0 < 0) by apply Zlt_neg_0.
-    omega.
-  Qed.
-
-  Hint Resolve R_c_lt_pos R_c_lt_neg_pos.
-*)
+  Hint Resolve R_c_lt.
   Lemma R_c_wf : well_founded R_c.
   Proof.
     apply well_founded_lt_compat with connat.
-    intros.
-    destruct H.
-    assert (forall p, 0 < nat_of_P p )%nat by
-      apply lt_O_nat_of_P.
-    assert (forall p, Zneg p < 0) by
-      apply Zlt_neg_0 .
-    assert (forall p, 0 < Zpos p) by
-      auto with zarith.
-    unfold connat.
-    assert (x - c < y -c ) by omega.
-    remember (x-c) as xc ;remember (y-c) as yc.
-    destruct yc;destruct xc;try rewrite <- Heqxc, <- Heqyc;
-      try omega; auto with zarith arith.
-    specialize H3 with p; omega.
-    assert (nat_of_P p0 < nat_of_P p)%nat .
-      repeat rewrite Zpos_eq_Z_of_nat_o_nat_of_P in *.
-      apply inj_lt_rev.
-      omega.
-    omega.
-    specialize H2 with p;omega.
-    admit.
-    admit.
-    admit.
-    admit.
-
-    simpl.
-
-    auto with zarith.
-    simpl.
-    destruct
-    simpl.
-    destruct H.
-    assert (x - c < y -c) by omega.
-    assert (0 <= x - c  \/ x - c <  0) by omega.
-    destruct H2.
-    assert (0 <= x - c < y -c) by omega.
     auto.
-    admit.
-(*
-    assert (0 <= x - c  \/ x - c <  0) by omega.
-    destruct H3.
-
-    replace (connat x <= connat y)%nat with (connat x < S (connat y))%nat in *.
-  assert (connat x < connat y \/ connat x = connat y)%nat by omega.
-  clear H0.
-  destruct H1.
-  auto.
-  destruct H.
-  assert (x = y).
-    assert (x - c = y - c)  by auto.
-    omega.
-  omega. *)
   Qed.
 
 End Zad1.
@@ -251,10 +164,10 @@ Section Zad2.
         | y::xs => fun p => if le_dec x y then _ else _ (F xs x _ ) p
       end);intros.
   exists (x::nil).
-  intuition;eauto.
+  intuition eauto.
 
   exists (x::y::xs).
-  intuition;eauto.
+  intuition eauto.
 
   destruct x0.
   assert (y < x) by
@@ -263,7 +176,7 @@ Section Zad2.
     (apply lt_le;auto).
 
   exists (y::x0).
-  intuition;eauto.
+  intuition eauto.
 
   inversion p;eauto.
   Defined.
@@ -293,7 +206,7 @@ Section Zad2.
   specialize (insert x a H0);intros.
   destruct H1.
   exists x0.
-  intuition;eauto.
+  intuition eauto.
   Defined.
 
   Eval compute in insertsort (2::5::1::6::3::nil).
