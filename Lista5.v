@@ -249,6 +249,20 @@ Section Zad3.
       | Plus e1 e2 => flat_expr_aux e1 (flat_expr e2)
     end.
 
+  Fixpoint insert_term n t :=
+    match t with
+      | Atom m => if leb n m then Plus (Atom n) t else Plus t (Atom n)
+      | Plus (Atom m) t' => if leb n m then Plus (Atom n) t else Plus (Atom m) (insert_term n t')
+      | _ => Plus (Atom n) t
+    end.
+
+  Fixpoint sort_term t :=
+    match t with
+      | Plus (Atom n) t' => insert_term n (sort_term t')
+      | _ => t
+    end.
+
+
   Lemma flat_aux_correct : forall vm e1 e2,
     interp vm e1 + interp vm e2 = interp vm (flat_expr_aux e1 e2).
     double induction e1 e2;intros;simpl;
@@ -266,33 +280,34 @@ Section Zad3.
     intros; do 2 rewrite <- H in *;trivial.
   Qed.
 
-  Lemma interp_rev_corr : forall vm e,
-    interp vm e = interp (rev vm) e.
-    induction e;intros;simpl.
-    admit.
-
-    rewrite IHe1, IHe2;auto.
-  Qed.
-  Hint Rewrite <- interp_rev_corr : db.
-
-  Lemma interp_rev_refl : forall vm e1 e2,
-    interp (rev vm) e1 = interp (rev vm) e2
-    -> interp vm e1 = interp vm e2.
-    intros.
-    autorewrite with db in H.
+  Lemma insert_term_corr : forall t n vm,
+    interp vm (insert_term n t) = interp_var n vm  + interp vm t.
+    induction t; simpl; intros.
+      destruct leb;simpl in * ;auto with arith.
+    destruct t1;simpl.
+    destruct leb;simpl;auto with arith.
+    rewrite IHt2;auto with arith.
+    replace (interp_var i vm + interp vm t2) with (interp vm t2 + interp_var i vm)
+      by auto with arith.
+    rewrite <- plus_comm.
+    auto with arith.
     auto.
   Qed.
 
-  Fixpoint listT_to_atommap (lst : list nat) :=
-    match lst with
-      | nil => fun _ => 0
-      | a :: xs => fun n =>
-        match n with
-          | 0 => a
-          | S m => listT_to_atommap xs m
-        end
-    end.
+  Hint Rewrite insert_term_corr : db.
+  Lemma sort_term_corr_aux  : forall t vm,
+    interp vm t = interp vm (sort_term t).
+    induction t;simpl ;auto.
+    destruct t1;intros;autorewrite with db;auto.
+  Qed.
 
+  Hint Rewrite <- sort_term_corr_aux sort_term_corr_aux : db.
+
+  Lemma sort_term_corr : forall t1 t2 vm,
+    interp vm (sort_term t1) = interp vm (sort_term t2)
+    -> interp vm t1 = interp vm t2.
+    intros t1 t2 vm;autorewrite with db;auto.
+  Qed.
 
   Ltac insert_atom atoms a :=
     match atoms with
@@ -334,39 +349,24 @@ Section Zad3.
     intros;
     match goal with
       | [ |- ?X1 = ?X2] =>
-        let atoms1 := enum_atom X1 in
-        let atoms2 := enum_atom X2 in
-          let e1 := model atoms1 X1 in
-          let e2 := model atoms2 X2 in
-            (change (interp atoms1 e1 =
-                     interp atoms2 e2)
-            ; repeat (apply flat_correct || apply interp_rev_corr ); reflexivity)
-      | _ => idtac "dupa"
+        let atoms := enum_atom X1 in
+          let e1 := model atoms X1 in
+          let e2 := model atoms X2 in
+            (change (interp atoms e1 =
+                     interp atoms e2)
+            ; apply flat_correct
+            ; apply sort_term_corr
+            ; reflexivity)
+      | _ => idtac "blad"
     end.
 
   Definition nmn := Plus (Atom 0) (Plus (Atom 1) (Atom 0)).
   Definition mnn := Plus (Atom 0) (Plus (Atom 1) (Atom 1)).
   Lemma refl_test : forall n m,
     n+(m+n) = m+(n+n).
-    intros.
-    change (interp (n::m::nil) nmn = interp (m::n::nil) mnn).
-    unfold nmn,mnn.
-    rewrite interp_rev_corr.
-    simpl rev.
-    apply flat_correct.
-    change (interp (n::m::nil) (Plus (Atom 0) (Plus (Atom 1) )) = interp (y::x::nil) (Plus (Atom 0) (Atom 1))).
     prover.
-    intros.
-    change (interp (x::y::nil) (Plus (Atom 0) (Atom 1)) = interp (y::x::nil) (Plus (Atom 0) (Atom 1))).
-    apply interp_rev_corr.
-    rewrite interp_rev_corr.
-    simpl.
-    auto.
-    reflexivity.
-    auto.
-    prover.
-  admit.
   Qed.
+
   Lemma refl_test2 : forall x y z,
     x + y + z = x + (y + z).
     prover.
