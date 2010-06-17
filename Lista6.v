@@ -115,88 +115,45 @@ Section Zad2.
         | hbin t1 t2 l r => fun hp =>
           (match hp in hpath _ t' return
              (match t' with
-               | tip _ => unit
-               | bin l r => (hpath e l -> B e) -> (hpath e r -> B e) -> B e
-             end ) with
-            | path_end => tt
-            | path_left _ _  p => fun f  _ =>  f p
-            | path_right _ _ p => fun _ f => f p
-          end) (hget e t1 l) (hget e t2 r)
+                | tip _ => unit
+                | bin l r => (hpath e l -> B e) -> (hpath e r -> B e) -> B e
+              end ) with
+             | path_end => tt
+             | path_left _ _  p => fun f  _ =>  f p
+             | path_right _ _ p => fun _ f => f p
+           end) (hget e t1 l) (hget e t2 r)
       end); inversion hp;assumption.
     Defined.
-  End htree.
+    End htree.
 
-  Implicit Arguments htree [A].
+    Implicit Arguments htree [A].
 
-  Section hlist.
-    Require  Import List.
-    Variable A : Type.
-    Variable B : A -> Type.
-    Inductive hlist : list A -> Type :=
-    | hnil : hlist nil
-    | hcons : forall x l' , B x -> hlist l' -> hlist (x::l').
-
-    End hlist.
-    Example heterotype : list Set := nat :: bool :: nil.
-
-    Implicit Arguments hnil [ A B].
-    Implicit Arguments hcons [A B x l'].
-    Implicit Arguments hlist [A].
-
-    Example heterolist : hlist (fun t:Set => t) heterotype :=   hcons 1 (hcons true hnil).
-    Fixpoint zip A B (l1 : list A) (l2 : list B) : list (A * B) :=
-      match l1,l2 with
-        | x::xs,y::ys => (x,y) :: zip xs ys
-        | _,_ => nil
-      end.
-
-    Fixpoint hmap A B C (ls : list A) (l : hlist B ls) (f : forall x, B x -> C x) : hlist C ls :=
-      match l in hlist _ ls return hlist C ls with
-        | hnil  => hnil
-        | hcons x l1 a xs => hcons (f x a) (@hmap A B C l1 xs f)
-      end.
-
-    Definition hzip_with A B C (ls : list A) (hl1 hl2 : hlist B ls) (f : forall x y, B x -> B y -> C (x,y)) : hlist C (zip ls ls).
-(*   match ls in list _ return hlist C (zip ls ls) with
-        | nil => hnil
-               (match hlist _ ( x  :: xs) return hlist C ((x,x)::zip xs xs) with
-                 | hcons y _ b hl'' => hcons (a,b) (hzip A B C xs hl' hl'') *)
-    induction ls;simpl.
-    constructor 1.
-    intros hl1 hl2.
-    inversion hl1;inversion hl2;subst.
-    constructor;auto.
-    admit.
-    auto.
-  Defined.
-    simpl.
-    admit.
-
-
-    Fixpoint hzip A B C (l : list A) (hl1 hl2 : hlist B l) : hlist C (combine l l) :=
-      match hl1,hl2 in hlist _ l * hlist _ _ return hlist AB_F (combine ls ls) with
-        | hcons x l1 a xs ,hcons l2 y b ys => hcons (x,y) (combine l1 l2) (a,b) (@hzip A B C l1 xs ys)
-        | _,_ => hnil
-      end.
-
-Definition get_elem
-
-  Section tzip.
-    Variable A : Type.
-    Variable B C D : A -> Type.
-    Variable f : forall x y, B x -> C y -> D x.
-    Fixpoint tzip : A B C D  (t : tree A ) : htree B t -> htree C t -> htree D t :=
-      match t with
-        |
-  Program Fixpoint tmap (t : tree A ) (f : forall x y, B x -> C y -> D x)  (t1 : htree B t) (t2 : htree C t ): htree D t  :=
-    match t1,t2 in (htree _ t * htree _ t) return htree D t with
-      | hbin t1'  t2' l1 r1,hbin t1''  t2'' l2 r2 =>
-        match
-        hbin (tmap A B C D  _ f l1 l2) (tmap A B C D f  r1 r2)
-      | htip x a,htip y b => htip (f x y a b)
-      | _,_ => !
-    end.
-
-
-
+    Section tzip.
+      Variable A : Type.
+      Variable B C D : A -> Type.
+      Variable f : forall x,  B x -> C x -> D x.
+      Definition tzip  t ( h : htree B t)  :  htree C t -> htree D t.
+      refine ( fix tzip  t ( h : htree B t)  :  htree C t -> htree D t :=
+        match h in htree _ t return htree C t -> htree D t with
+          | htip x a => fun h1 =>
+            (match h1 in htree _ t return
+               match t with
+                 | tip x => B x -> htree D (tip x)
+                 | _ => unit
+               end with
+               | htip x  b => fun a => _
+               | _ => tt
+             end) a
+          | hbin l r xl xr => fun h1 =>
+            (match h1 in htree _ t return
+               match t with
+                 | bin l r => (htree C l -> htree D l) -> (htree C r  -> htree D r) ->  htree D (bin l r)
+                 | _ => unit
+               end with
+               | hbin _ _ l1 r1 => fun fl fr => hbin (fl l1) (fr r1)
+               | _ => tt
+             end) (tzip l xl) (tzip r xr)
+        end);constructor;auto.
+    Defined.
+  End tzip.
 End Zad2.
