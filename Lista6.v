@@ -7,13 +7,13 @@ Section Zad1.
     | cleaf : ltree
     | cbin : A -> ltree -> ltree -> ltree .
 
-    Definition unfold_cbin t :=
+    Definition dcopy_cbin t :=
       match t with
         | cleaf => cleaf
         | cbin x l r => cbin x l r
       end.
 
-    Lemma unfold_cbin_id : forall t, unfold_cbin t = t.
+    Lemma dcopy_cbin_id : forall t, dcopy_cbin t = t.
     Proof.  destruct t; simpl ; auto. Qed.
 
     CoInductive inf_branch : ltree -> Prop :=
@@ -26,7 +26,6 @@ Section Zad1.
     | inf_all : forall x l r ,
         inf_all_branch l -> inf_all_branch r -> inf_all_branch (cbin x l r).
 
-
     Inductive fin_branch : ltree -> Prop :=
     | fin_leaf : fin_branch cleaf
     | fin_left : forall x l r, fin_branch  l -> fin_branch (cbin x l r)
@@ -38,41 +37,28 @@ Section Zad1.
          fin_all_branch l -> fin_all_branch r -> fin_all_branch (cbin x l r).
 
     End Tree.
-
+    Ltac prove_inf := cofix H;intros;rewrite <- dcopy_cbin_id;simpl;auto with inf.
+    Hint Constructors inf_branch inf_all_branch : inf.
     CoFixpoint all_nat_from n  :=
       cbin n (all_nat_from (n+1)) (all_nat_from (n+1)).
+    Hint Unfold all_nat_from.
 
     CoFixpoint all_nat_from' n :=
       cbin n (all_nat_from' (n+1)) (@cleaf nat).
+    Hint Unfold all_nat_from'.
 
     Definition all_nat := all_nat_from 0 .
     Definition all_nat' := all_nat_from' 0.
 
 
     Lemma k_all_inf : forall k, inf_all_branch (all_nat_from k).
-    Proof.
-      cofix H.
-      intros.
-      unfold all_nat_from.
-      rewrite <- unfold_cbin_id.
-      simpl.
-      constructor;auto.
-    Qed.
+    Proof. prove_inf. Qed.
 
     Lemma nat_all_inf : inf_all_branch all_nat.
-      apply k_all_inf.
-    Qed.
+    Proof.  apply k_all_inf.    Qed.
 
     Lemma k_branch_inf : forall k, inf_branch (all_nat_from k).
-    Proof.
-      cofix H.
-      intros.
-      unfold all_nat_from.
-      rewrite <- unfold_cbin_id.
-      simpl.
-      constructor.
-      auto.
-    Qed.
+    Proof. prove_inf. Qed.
 
     Lemma nat_branch_inf : inf_branch all_nat.
     Proof. apply k_branch_inf. Qed.
@@ -80,7 +66,7 @@ Section Zad1.
     Lemma k_branch_fin : forall k, fin_branch (all_nat_from' k).
     Proof.
       intros.
-      rewrite <- unfold_cbin_id.
+      rewrite <- dcopy_cbin_id.
       simpl.
       constructor 3.
       constructor.
@@ -90,15 +76,7 @@ Section Zad1.
     Proof.  apply k_branch_fin. Qed.
 
     Lemma k_branch_binf : forall k, inf_branch (all_nat_from' k).
-    Proof.
-      cofix H.
-      intros.
-      rewrite <- unfold_cbin_id.
-      simpl.
-      constructor.
-      auto.
-    Qed.
-
+    Proof. prove_inf. Qed.
 End Zad1.
 
 Section Zad2.
@@ -144,7 +122,7 @@ Section Zad2.
             | path_left _ _  p => fun f  _ =>  f p
             | path_right _ _ p => fun _ f => f p
           end) (hget e t1 l) (hget e t2 r)
-      end); inversion hp;trivial.
+      end); inversion hp;assumption.
     Defined.
   End htree.
 
