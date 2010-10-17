@@ -3,11 +3,11 @@ module Main where
 
 import Data.Function
 import Text.ParserCombinators.Parsec
-import Text.ParserCombinators.Parsec.Char
 import Text.ParserCombinators.Parsec.Expr
 import Control.Applicative
 import Control.Monad(ap,forever)
 import Control.Arrow
+import Data.Char
 
 data Exp = T | F | If Exp Exp Exp | Z | S Exp | Exp :+: Exp | IsZ Exp | Eq Exp Exp | P Exp
          deriving (Eq,Show)
@@ -107,22 +107,25 @@ instance Applicative (GenParser Char st ) where
     pure = return
     (<*>) = ap
 
-lexme = (<* spaces)
+lexme p = do {spaces ;  x <- p ; spaces ; return x} where
+    spaces = skipMany $ satisfy isSpace
 keyword  = fmap (const ())  .  lexme . string
 
-expr' = choice [ pT, pF, pNat, pIsZ, pIf] where
+expr' = choice [ pT, pF, pNat, pIsZ, pIf,parens expr] where
     pT = keyword "true" >> pure T
     pF = keyword "false" >> pure F
     pNat = (toNat  . read ) <$> many1 digit
-    pIsZ = IsZ  <$> (keyword "isZero"  *> expr)
-    pIf = If <$> (keyword "if" *> expr) <*> (keyword "then" *> expr) <*> (keyword "else" *> expr)
+    pIsZ = IsZ  <$> (keyword "zero?"  *> expr)
+    pIf = If <$> (keyword "if" *> expr) <*> (keyword "then" *> expr') <*> (keyword "else" *> expr')
     toNat 0 = Z
     toNat n = S $ toNat $ pred n
+    parens p = keyword "(" *> p <* keyword ")"
 
 expr = buildExpressionParser [
         [Infix (keyword "+" *>  pure (:+:)) AssocLeft ],
         [Infix (keyword "=" *>  pure Eq) AssocNone ]
        ] expr'
+parser = parse expr ""
 
 repl = forever $
   print . (evalBig  &&& maybe (error "Cannot infer correct type") id . typeOf) . either (error.show) id . parse expr "" =<< getLine
