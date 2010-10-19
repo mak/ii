@@ -27,38 +27,39 @@ isBool F = True
 isBool T = True
 isBool _ = False
 
-evalStep Z = Z
-evalStep T = T
-evalStep F = F
-evalStep (S n) | isNum n  = S n
-evalStep (S e) = S $ evalStep e
-evalStep (P Z) = Z
-evalStep (P (S e)) | isNum e = e
-evalStep (P e) = P $ evalStep e
-evalStep (If T e _ ) = e
-evalStep (If F _ e  ) = e
-evalStep (If eb e1 e2 ) = If (evalStep eb) e1 e2
-evalStep (IsZ Z) = T
-evalStep (IsZ (S e )) | isNum e  = F
-evalStep (IsZ e) | isNum e = IsZ $ evalStep e
-evalStep (Z :+: n) | isNum n = n
-evalStep (S n1 :+: n2) | isNum n1 && isNum n2 = S $ n1 :+: n2
-evalStep (n :+: e) | isNum n = n :+: evalStep e
-evalStep (e1 :+: e2) = evalStep e1 :+: e2
-evalStep (Eq Z Z ) = T
-evalStep (Eq Z n ) | isNum n = F
-evalStep (Eq n Z ) | isNum n = F
-evalStep (Eq T T ) = T
-evalStep (Eq F T ) = F
-evalStep (Eq T F ) = T
-evalStep (Eq b e) | isBool b = Eq b $ evalStep e
-evalStep (Eq e1 e2) = Eq (evalStep e1) e2
+
+evalStep Z = Nothing
+evalStep T = Nothing
+evalStep F = Nothing
+evalStep (S n) | isNum n  = pure $ S n
+evalStep (S e) = S <$> evalStep e
+evalStep (P Z) = pure Z
+evalStep (P (S e)) | isNum e = pure e
+evalStep (P e) = P <$> evalStep e
+evalStep (If T e _ ) = pure e
+evalStep (If F _ e  ) = pure e
+evalStep (If eb e1 e2 ) = evalStep eb >>= \b -> pure (If b e1 e2)
+evalStep (IsZ Z) = pure T
+evalStep (IsZ (S e )) | isNum e  = pure F
+evalStep (IsZ e) | isNum e = IsZ <$> evalStep e
+evalStep (Z :+: n) | isNum n = pure n
+evalStep (S n1 :+: n2) | isNum n1 && isNum n2 = pure $ S $ n1 :+: n2
+evalStep (n :+: e) | isNum n = (n :+:) <$>  evalStep e
+evalStep (e1 :+: e2) = (:+: e2) <$> evalStep e1
+evalStep (Eq Z Z ) = pure T
+evalStep (Eq Z n ) | isNum n = pure F
+evalStep (Eq n Z ) | isNum n = pure F
+evalStep (Eq T T ) = pure T
+evalStep (Eq F T ) = pure F
+evalStep (Eq T F ) = pure T
+evalStep (Eq b e) | isBool b = Eq b <$> evalStep e
+evalStep (Eq e1 e2) = flip Eq e2 <$> evalStep e1
 
 evalStar :: Exp -> Value
 evalStar e = case evalStep e of
-               n | isNum n  -> N $ toInt n
-               b | isBool b -> B $ toBool b
-               _ -> evalStar $ evalStep e
+               Nothing | isNum e  -> N $ toInt e
+               Nothing | isBool e -> B $ toBool e
+               Just e' -> evalStar e'
     where
       toBool T = True
       toBool F = False
@@ -111,12 +112,14 @@ lexme p = do {spaces ;  x <- p ; spaces ; return x} where
     spaces = skipMany $ satisfy isSpace
 keyword  = fmap (const ())  .  lexme . string
 
-expr' = choice [ pT, pF, pNat, pIsZ, pIf,parens expr] where
+expr' = choice [ pT, pF, pNat, pSucc, pPred, pIsZ, pIf,parens expr] where
     pT = keyword "true" >> pure T
     pF = keyword "false" >> pure F
     pNat = (toNat  . read ) <$> many1 digit
     pIsZ = IsZ  <$> (keyword "zero?"  *> expr)
     pIf = If <$> (keyword "if" *> expr) <*> (keyword "then" *> expr') <*> (keyword "else" *> expr')
+    pSucc = S <$> (keyword "succ" *> expr)
+    pPred = P <$> (keyword "pred" *> expr)
     toNat 0 = Z
     toNat n = S $ toNat $ pred n
     parens p = keyword "(" *> p <* keyword ")"
