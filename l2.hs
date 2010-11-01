@@ -1,9 +1,15 @@
-{-# LANGUAGE ViewPatterns, FlexibleInstances #-}
+{-# LANGUAGE ViewPatterns, NoMonomorphismRestriction #-}
 module Main where
+
 
 import Data.Set (Set)
 import qualified Data.Set as S
+import Data.Map (Map)
+import qualified Data.Map as M
+import Control.Arrow (Arrow(..))
 import Control.Monad.Reader
+import Control.Monad.State
+import Data.Char (chr)
 
 data Var = Name String Int -- a_i
     deriving (Eq,Ord)
@@ -95,6 +101,38 @@ betaNorm2 = either betaNorm2 id .toVal . betaRed2
       toVal t@(App2 (Lam2 _) _) = Left t
       toVal t@(App2 t1 t2) = either (const (Left t)) (\t' -> Right $ A2 t' t2) $ toVal t1
 --      toVal t = Left t
+
+data Term4 = Var4 Int | App4 Term4 Term4 | Lam4 Term4
+    deriving Show
+
+toDeBrujin = uncurry (flip evalState) . (((,) M.empty . pred .countLambdas ) *** go ) . dup  where
+    go (Var x) = do
+        (m,_) <- get
+        let j  = M.size m
+            m' = M.insert x j m
+        case M.lookup x m of
+          Nothing -> put (m,j) >>  return (Var4 j)
+          Just i  -> return $ Var4 i
+    go (App t1 t2)   = App4 `fmap` go t1 `ap` go t2
+    go (Lam x t) = modify ((uncurry (M.insert x) . swap)  &&&  (pred  . snd)) >> (Lam4 `fmap` go t)
+    dup x = (x,x)
+    swap (x,y) = (y,x)
+
+countLambdas (Var _) = 0
+countLambdas (App (countLambdas -> n1) (countLambdas -> n2)) = n1 + n2
+countLambdas (Lam _ (countLambdas -> n )) = succ n
+
+fromDeBrujin = flip evalState 0 . go where
+    mkName  = uncurry (flip Name) . second (return . chr . (97+)) .  (`quotRem` 26)
+    go (Var4 i) = return . Var $ mkName i
+    go (App4 t1 t2) = App `fmap` go t1 `ap` go t2
+    go (Lam4 t) = do
+      t' <- go t
+      i <- get
+      modify succ
+      return $ Lam (mkName i) t'
+
+
 {-
 moze kiedy indziej?
 -- see `I'm not a numberm: I'm free variable` by McBride and McKinna
@@ -115,7 +153,7 @@ instance Show Value where
     show (N n)= show n
     show _ = "<function>"
 
-
+{-
 data StackType = Either Term3 Value
 type Stack = [StackType]
 type Machine = Either (Term3,Stack) (Stack,Term3)
@@ -127,7 +165,7 @@ evalStack (App3 t1 t2,s) = Left (t1,Left t2:s)
 evalStack' (Left t:s,v0) = Left (t1,Right v:s)
 evalStack  (
 
-
+-}
 suck (N i) = return $ N $ i + 1
 suck _ = fail "not integer"
 app (Fun f) x = f x
