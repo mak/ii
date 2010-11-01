@@ -1,7 +1,7 @@
-{-# LANGUAGE ViewPatterns, NoMonomorphismRestriction #-}
+{-# LANGUAGE ViewPatterns, NoMonomorphismRestriction, OverloadedStrings #-}
 module Main where
 
-
+import GHC.Exts
 import Data.Set (Set)
 import qualified Data.Set as S
 import Data.Map (Map)
@@ -14,9 +14,13 @@ import Data.Char (chr)
 data Var = Name String Int -- a_i
     deriving (Eq,Ord)
 
+
 mkName = flip Name 0
 instance Show Var where
     show (Name a i) = a ++ show i
+
+instance IsString Var where
+    fromString = mkName
 
 data Term1 = Var Var | App Term1 Term1 | Lam Var Term1
 data Val1 =  V Var | L Var Val1 | A Val1 Val1
@@ -153,19 +157,44 @@ instance Show Value where
     show (N n)= show n
     show _ = "<function>"
 
-{-
+
 data StackType = Either Term3 Value
 type Stack = [StackType]
 type Machine = Either (Term3,Stack) (Stack,Term3)
+
+fv3 (Var3 a) = S.singleton a
+fv3 (App3 (fv3 -> s1) (fv3 -> s2)) = s1 `S.union` s2
+fv3 (Lam3 a (fv3 ->s)) = a `S.delete` s
+
+
+-- [b/t]  s
+subst3 b t (Var3 a)| a == b = t
+subst3 b t (Var3 a)  = Var3 a
+subst3 b t (App3 (subst3 b t ->t1) (subst3 b t ->t2))= App3 t1 t2
+subst3 b _ t@(Lam3 a _ ) | b == a = t
+subst3 b t (Lam3 a u) = Lam3 a' $ subst3 b t u'  where
+   Name n c = a
+   (a',u') =
+       let (f,x) = occ a t
+           uniq_t_v = flip bump' b $ bump a x
+           (f',x') = occ uniq_t_v u
+           a_uniq = if f' then bump uniq_t_v x' else uniq_t_v
+       in if f then (a_uniq,subst3 a (Var3 a') u) else (a,u)
+   occ a = S.fold (\a' (f',a'')-> (f' || a' == a ,maxVar a'' a')) (False,Name "" 0) . fv3
+   bump (Name name k) (Name _ j) = Name name $ succ $ max k j
+   bump' v@(Name n _) v1@(Name n' _) = if v == v1 then bump v v1 else v
+   maxVar v@(Name _ x) v1@(Name _ x1) = if x > x1 then v else v1
 
 evalStack (Var3 v,s) = Right (s,Var3 v)
 evalStack (Lam3 v t,s) = Right (s,Lam3 v t)
 evalStack (App3 t1 t2,s) = Left (t1,Left t2:s)
 
-evalStack' (Left t:s,v0) = Left (t1,Right v:s)
-evalStack  (
+evalStack' (Left t:s,v0) = Left (t,Right v0:s)
+evalStack' (Right (Lam3 n t):s,v1) = Left (subst3 n v1 t,s)
+evalStack' (Right (
 
--}
+
+
 suck (N i) = return $ N $ i + 1
 suck _ = fail "not integer"
 app (Fun f) x = f x
@@ -193,28 +222,21 @@ interp = interp' (error "unbuod variable")
 interp' env = maybe (error "another error") id . flip runReaderT env . eval
 --tests
 
-x = mkName "x"
-y = mkName "y"
-z = mkName "z"
-f = mkName "f"
-g = mkName "g"
-h = mkName "h"
+instance IsString Term3 where
+    fromString = Var3 . mkName
 
 test =
   let
-    cataName = mkName "cata"
-    addName  = mkName "add"
-    mulName = mkName "mul"
-    cata = Lam3 f $ Lam3 g $ Fix h $  Lam3 x $ Case (Var3 x) (Var3 g) (y,App3 (Var3 f) (App3 (Var3 h) (Var3 y)))
-    add = Lam3 x $ Lam3 y $ App3 (App3 (App3 (Var3 cataName) (Lam3 z $ S (Var3 z)) ) (Var3 y)) (Var3 x)
-    mul = Lam3 x $ Lam3 y $ App3 (App3 (App3 (Var3 cataName) (Lam3 z $ App3 (App3 (Var3 addName) (Var3 y)) (Var3 z)) ) Z) (Var3 x)
-    fac = Fix f $ Lam3 x $ Case (Var3 x) (S Z) (y,App3 (App3 (Var3 mulName) (Var3 x)) (App3 (Var3 f) (Var3 y)))
+    cata = Lam3 "f" $ Lam3 "g" $ Fix "h" $  Lam3 "x" $ Case "x" "g" ("y",App3 "f" (App3 "h" "y"))
+    add = Lam3 "x" $ Lam3 "y" $ App3 (App3 (App3 "cata" (Lam3 "z" $ S "z" ) ) "y") "x"
+    mul = Lam3 "x" $ Lam3 "y" $ App3 (App3 (App3 "cata" (Lam3 "z" $ App3 (App3 "add" "y") "z") ) Z) "x"
+    fac = Fix "f" $ Lam3 "x" $ Case "x" (S Z) ("y",App3 (App3 "mul" "x") (App3 "f" "y"))
     cataFun = interp cata
     addFun = interp' env' add
     mulFun = interp' env'' mul
-    env' = \x -> if x == cataName then cataFun else error ("unbound var")
-    env'' = \x -> if x == addName then addFun else env' x
-    env''' = \x -> if x == mulName then mulFun else env'' x
+    env' = \x -> if x == "cata" then cataFun else error ("unbound var: " ++ show x )
+    env'' = \x -> if x == "add" then addFun else env' x
+    env''' = \x -> if x == "mul" then mulFun else env'' x
   in
     interp' env''' fac
 
