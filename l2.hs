@@ -144,6 +144,7 @@ data Term3 = Free Name2 | Bound Int | App Term3 Term3 | Lam Term3 Scope
     deriving (Eq,Show)
 newtype Scope = Scope Term3
 -}
+
 type Name = Var
 data Term3 = Var3 Name | App3 Term3 Term3 | Lam3 Name Term3 | Z | S Term3 | Case Term3 Term3 (Name,Term3) | Fix Name Term3
 data Value = N Int | Fun (Value -> Value)
@@ -185,15 +186,25 @@ subst3 b t (Lam3 a u) = Lam3 a' $ subst3 b t u'  where
    bump' v@(Name n _) v1@(Name n' _) = if v == v1 then bump v v1 else v
    maxVar v@(Name _ x) v1@(Name _ x1) = if x > x1 then v else v1
 
-evalStack (Var3 v,s) = Right (s,Var3 v)
-evalStack (Lam3 v t,s) = Right (s,Lam3 v t)
-evalStack (App3 t1 t2,s) = Left (t1,Left t2:s)
+isNum Z = True
+isNum (S n) = isNum n
+isNum _ = False
 
-evalStack' (Left t:s,v0) = Left (t,Right v0:s)
-evalStack' (Right (Lam3 n t):s,v1) = Left (subst3 n v1 t,s)
-evalStack' (Right (
+isVal3 (Var3 _) = True
+isVal3 (Lam3 _ _) = True
+isVal3 (App3 (App3 t1 t2) t3) = all isVal3 [t1,t2,t3]
+isVal3 (App3 (Var3 _) t) = isVal3 t
+isVal3 _ = False
 
-
+betaEval3 (Var3 v) = Var3 v
+betaEval3 (Lam3 v t) = Lam3 v t
+betaEval3 Z = Z
+betaEval3 (S (betaEval3 -> n)) | isNum n = S n
+betaEval3 (App3 (betaEval3 -> Lam3 v u) (betaEval3 -> w)) = betaEval3 $ subst3 v w u
+betaEval3 (App3 (betaEval3 -> v) (betaEval3 -> w)) | not $ isNum v = App3 v w
+betaEval3 (Case (betaEval3 -> Z) t _ ) = betaEval3 t
+betaEval3 (Case (betaEval3 -> S n) _ (v,t) ) = betaEval3 $ subst3 v (S n) t
+betaEval3 (Fix v t) = let a = betaEval3 $ subst3 v a t in a
 
 suck (N i) = return $ N $ i + 1
 suck _ = fail "not integer"
@@ -225,12 +236,12 @@ interp' env = maybe (error "another error") id . flip runReaderT env . eval
 instance IsString Term3 where
     fromString = Var3 . mkName
 
+cata = Lam3 "f" $ Lam3 "g" $ Fix "h" $  Lam3 "x" $ Case "x" "g" ("y",App3 "f" (App3 "h" "y"))
+add = Lam3 "x" $ Lam3 "y" $ App3 (App3 (App3 "cata" (Lam3 "z" $ S "z" ) ) "y") "x"
+mul = Lam3 "x" $ Lam3 "y" $ App3 (App3 (App3 "cata" (Lam3 "z" $ App3 (App3 "add" "y") "z") ) Z) "x"
+fac = Fix "f" $ Lam3 "x" $ Case "x" (S Z) ("y",App3 (App3 "mul" "x") (App3 "f" "y"))
 test =
   let
-    cata = Lam3 "f" $ Lam3 "g" $ Fix "h" $  Lam3 "x" $ Case "x" "g" ("y",App3 "f" (App3 "h" "y"))
-    add = Lam3 "x" $ Lam3 "y" $ App3 (App3 (App3 "cata" (Lam3 "z" $ S "z" ) ) "y") "x"
-    mul = Lam3 "x" $ Lam3 "y" $ App3 (App3 (App3 "cata" (Lam3 "z" $ App3 (App3 "add" "y") "z") ) Z) "x"
-    fac = Fix "f" $ Lam3 "x" $ Case "x" (S Z) ("y",App3 (App3 "mul" "x") (App3 "f" "y"))
     cataFun = interp cata
     addFun = interp' env' add
     mulFun = interp' env'' mul
