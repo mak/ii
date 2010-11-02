@@ -46,17 +46,17 @@ subst b t (Var a)  = Var a
 subst b t (App (subst b t ->t1) (subst b t ->t2))= App t1 t2
 subst b _ t@(Lam a _ ) | b == a = t
 subst b t (Lam a u) = Lam a' $ subst b t u'  where
-   Name n c = a
    (a',u') =
-       let (f,x) = occ a t
+       let (f,x) = occ fv a t
            uniq_t_v = flip bump' b $ bump a x
-           (f',x') = occ uniq_t_v u
+           (f',x') = occ fv uniq_t_v u
            a_uniq = if f' then bump uniq_t_v x' else uniq_t_v
        in if f then (a_uniq,subst a (Var a') u) else (a,u)
-   occ a = S.fold (\a' (f',a'')-> (f' || a' == a ,maxVar a'' a')) (False,Name "" 0) . fv
-   bump (Name name k) (Name _ j) = Name name $ succ $ max k j
-   bump' v@(Name n _) v1@(Name n' _) = if v == v1 then bump v v1 else v
-   maxVar v@(Name _ x) v1@(Name _ x1) = if x > x1 then v else v1
+
+occ fv a = S.fold (\a' (f',a'')-> (f' || a' == a ,maxVar a'' a')) (False,Name "" 0) . fv
+bump (Name name k) (Name _ j) = Name name $ succ $ max k j
+bump' v@(Name n _) v1@(Name n' _) = if v == v1 then bump v v1 else v
+maxVar v@(Name _ x) v1@(Name _ x1) = if x > x1 then v else v1
 
 betaRed :: Term1 -> Term1
 betaRed (Var a) = Var a
@@ -136,15 +136,6 @@ fromDeBrujin = flip evalState 0 . go where
       modify succ
       return $ Lam (mkName i) t'
 
-
-{-
-moze kiedy indziej?
--- see `I'm not a numberm: I'm free variable` by McBride and McKinna
-data Term3 = Free Name2 | Bound Int | App Term3 Term3 | Lam Term3 Scope
-    deriving (Eq,Show)
-newtype Scope = Scope Term3
--}
-
 type Name = Var
 data Term3 = Var3 Name | App3 Term3 Term3 | Lam3 Name Term3 | Z | S Term3 | Case Term3 Term3 (Name,Term3) | Fix Name Term3
 data Value = N Int | Fun (Value -> Value)
@@ -174,17 +165,19 @@ subst3 b t (Var3 a)  = Var3 a
 subst3 b t (App3 (subst3 b t ->t1) (subst3 b t ->t2))= App3 t1 t2
 subst3 b _ t@(Lam3 a _ ) | b == a = t
 subst3 b t (Lam3 a u) = Lam3 a' $ subst3 b t u'  where
-   Name n c = a
-   (a',u') =
-       let (f,x) = occ a t
+   (a',u') = reName3 a t u b
+subst3 b t (Fix a u) = Fix a' $ subst3 b t u' where
+   (a',u') = reName3 a t u b
+subst3 b t (Case (subst3 b t ->t1) (subst3 b t -> t2) (a,t3)) = Case t1 t2 $ (a',subst3 b t u') where
+   (a',u') = reName3 a t t3 b
+
+reName3 a t u b = (a',u') where
+    (a',u') =
+       let (f,x) = occ fv3 a t
            uniq_t_v = flip bump' b $ bump a x
-           (f',x') = occ uniq_t_v u
+           (f',x') = occ fv3 uniq_t_v u
            a_uniq = if f' then bump uniq_t_v x' else uniq_t_v
        in if f then (a_uniq,subst3 a (Var3 a') u) else (a,u)
-   occ a = S.fold (\a' (f',a'')-> (f' || a' == a ,maxVar a'' a')) (False,Name "" 0) . fv3
-   bump (Name name k) (Name _ j) = Name name $ succ $ max k j
-   bump' v@(Name n _) v1@(Name n' _) = if v == v1 then bump v v1 else v
-   maxVar v@(Name _ x) v1@(Name _ x1) = if x > x1 then v else v1
 
 isNum Z = True
 isNum (S n) = isNum n
