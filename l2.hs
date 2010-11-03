@@ -10,8 +10,10 @@ import Control.Arrow (Arrow(..))
 import Control.Monad.Reader
 import Control.Monad.State
 import Data.Char (chr)
+import Data.List (findIndex)
 
-data Var = Name String Int -- a_i
+
+data Var = Name String Integer -- a_i
     deriving (Eq,Ord)
 
 
@@ -21,6 +23,9 @@ instance Show Var where
 
 instance IsString Var where
     fromString = mkName
+
+instance IsString Term1 where
+    fromString = Var . mkName
 
 data Term1 = Var Var | App Term1 Term1 | Lam Var Term1
 data Val1 =  V Var | L Var Val1 | A Val1 Val1
@@ -77,8 +82,6 @@ betaNorm t = case betaRed t of
 
 data Term2 = Var2 Integer | App2 Term2 Term2 | Lam2 Term2
     deriving Show
-data Val2 = V2 Integer | L2 Term2 | A2 Val2 Term2
-    deriving Show
 
 shift :: Integer -> Integer -> Term2 -> Term2
 shift d c (Var2 k) | k < c = Var2 k
@@ -91,46 +94,27 @@ subst2 (Var2 k) _ _ = Var2 k
 subst2 (App2 t1 t2) j u = App2 (subst2 t1 j u) (subst2 t2 j u)
 subst2 (Lam2 t) j u = subst2 t (j+1) $ shift 1 0 u
 
-betaRed2 (Var2 a) = Var2 a
-betaRed2 (Lam2 t) = Lam2 t
-betaRed2 (App2 (betaRed2 -> Lam2 u) t) = betaRed2 $ shift (-1) 0 $ subst2 u 0 $ shift 1 0 t
-betaRed2 (App2 (betaRed2 -> a)  s) = App2 a s
+kervine (App2 t1 t2) s = (t1,t2:s)
+kervine (Lam2 t) (u:s) = (t',s) where
+  t' = shift (-1) 0 $ subst2 t 0 $ shift 1 0 u
+
+kervineStar = go . flip (,) [] where
+    go (uncurry kervine -> (Lam2 t,[])) = Lam2 t
+    go (uncurry kervine -> (Var2 n,s)) = foldl App2 (Var2 n) s
+    go (uncurry kervine -> (t,s)) = go (t,s)
 
 
-betaNorm2 :: Term2 -> Val2
-betaNorm2 = either betaNorm2 id .toVal . betaRed2
-    where
-      toVal (Var2 a) = Right $ V2 a
-      toVal (Lam2 t) = Right $ L2 t
-      toVal t@(App2 (Lam2 _) _) = Left t
-      toVal t@(App2 t1 t2) = either (const (Left t)) (\t' -> Right $ A2 t' t2) $ toVal t1
---      toVal t = Left t
+toDeBrujin ctx = flip evalState (reverse ctx) . go where
+    go (Var v) = maybe (error $ "unboud variable:" ++ show v) (return . Var2 . toEnum ) . findIndex (==v) =<< get
+    go (App t1 t2) = App2 `fmap` go t1 `ap` go t2
+    go (Lam v t) = Lam2 `fmap` (modify (v:) >> go t)
 
-data Term4 = Var4 Int | App4 Term4 Term4 | Lam4 Term4
-    deriving Show
-
-toDeBrujin = uncurry (flip evalState) . (((,) M.empty . pred .countLambdas ) *** go ) . dup  where
-    go (Var x) = do
-        (m,_) <- get
-        let j  = M.size m
-            m' = M.insert x j m
-        case M.lookup x m of
-          Nothing -> put (m,j) >>  return (Var4 j)
-          Just i  -> return $ Var4 i
-    go (App t1 t2)   = App4 `fmap` go t1 `ap` go t2
-    go (Lam x t) = modify ((uncurry (M.insert x) . swap)  &&&  (pred  . snd)) >> (Lam4 `fmap` go t)
-    dup x = (x,x)
-    swap (x,y) = (y,x)
-
-countLambdas (Var _) = 0
-countLambdas (App (countLambdas -> n1) (countLambdas -> n2)) = n1 + n2
-countLambdas (Lam _ (countLambdas -> n )) = succ n
 
 fromDeBrujin = flip evalState 0 . go where
-    mkName  = uncurry (flip Name) . second (return . chr . (97+)) .  (`quotRem` 26)
-    go (Var4 i) = return . Var $ mkName i
-    go (App4 t1 t2) = App `fmap` go t1 `ap` go t2
-    go (Lam4 t) = do
+    mkName  = uncurry (flip Name) . second (return . chr . fromEnum . (97+)) .  (`quotRem` 26)
+    go (Var2 i) = return . Var $ mkName i
+    go (App2 t1 t2) = App `fmap` go t1 `ap` go t2
+    go (Lam2 t) = do
       t' <- go t
       i <- get
       modify succ
@@ -138,6 +122,7 @@ fromDeBrujin = flip evalState 0 . go where
 
 type Name = Var
 data Term3 = Var3 Name | App3 Term3 Term3 | Lam3 Name Term3 | Z | S Term3 | Case Term3 Term3 (Name,Term3) | Fix Name Term3
+    deriving Show
 data Value = N Int | Fun (Value -> Value)
 type Env = Name -> Value
 type Intepreter = ReaderT Env Maybe
@@ -149,31 +134,36 @@ instance Show Value where
     show (N n)= show n
     show _ = "<function>"
 
-
-data StackType = Either Term3 Value
-type Stack = [StackType]
-type Machine = Either (Term3,Stack) (Stack,Term3)
-
+fv3 Z = S.empty
+fv3 (S n) = fv3 n
 fv3 (Var3 a) = S.singleton a
 fv3 (App3 (fv3 -> s1) (fv3 -> s2)) = s1 `S.union` s2
 fv3 (Lam3 a (fv3 ->s)) = a `S.delete` s
+fv3 (Fix a (fv3 ->s)) = a `S.delete` s
+fv3 (Case (fv3 -> s1) (fv3 -> s2) (second fv3 -> (a,s3))) = s1 `S.union` s2 `S.union` (a `S.delete` s3)
 
 
 -- [b/t]  s
-subst3 b t (Var3 a)| a == b = t
-subst3 b t (Var3 a)  = Var3 a
-subst3 b t (App3 (subst3 b t ->t1) (subst3 b t ->t2))= App3 t1 t2
-subst3 b _ t@(Lam3 a _ ) | b == a = t
-subst3 b t (Lam3 a u) = Lam3 a' $ subst3 b t u'  where
-   (a',u') = reName3 a t u b
-subst3 b t (Fix a u) = Fix a' $ subst3 b t u' where
-   (a',u') = reName3 a t u b
-subst3 b t (Case (subst3 b t ->t1) (subst3 b t -> t2) (a,t3)) = Case t1 t2 $ (a',subst3 b t u') where
-   (a',u') = reName3 a t t3 b
+subst3 b s = subst3' b s where
+    fvs = fv3 s
+    subst3' b t (Var3 a)| a == b = t
+    subst3' b t (Var3 a)  = Var3 a
+    subst3' _ _ Z = Z
+    subst3' b t (S n) = S $ subst3' b t n
+    subst3' b t (App3 (subst3' b t ->t1) (subst3' b t ->t2))= App3 t1 t2
+    subst3' b _ t@(Lam3 a _ ) | b == a = t
+    subst3' b _ t@(Fix a _) | b == a = t
+    subst3' b _ t@(Case _ _ (a,_)) | b == a = t
+    subst3' b t (Lam3 a u) = Lam3 a' $ subst3' b t u'  where
+         (a',u') = reName3 fvs a t u b
+    subst3' b t (Fix a u) = Fix a' $ subst3' b t u' where
+         (a',u') = reName3 fvs a t u b
+    subst3' b t (Case (subst3' b t ->t1) (subst3' b t -> t2) (a,t3)) = Case t1 t2 $ (a',subst3' b t u') where
+         (a',u') = reName3 fvs a t t3 b
 
-reName3 a t u b = (a',u') where
+reName3 fvt a t u b = (a',u') where
     (a',u') =
-       let (f,x) = occ fv3 a t
+       let (f,x) = occ (const fvt) a t
            uniq_t_v = flip bump' b $ bump a x
            (f',x') = occ fv3 uniq_t_v u
            a_uniq = if f' then bump uniq_t_v x' else uniq_t_v
@@ -196,8 +186,8 @@ betaEval3 (S (betaEval3 -> n)) | isNum n = S n
 betaEval3 (App3 (betaEval3 -> Lam3 v u) (betaEval3 -> w)) = betaEval3 $ subst3 v w u
 betaEval3 (App3 (betaEval3 -> v) (betaEval3 -> w)) | not $ isNum v = App3 v w
 betaEval3 (Case (betaEval3 -> Z) t _ ) = betaEval3 t
-betaEval3 (Case (betaEval3 -> S n) _ (v,t) ) = betaEval3 $ subst3 v (S n) t
-betaEval3 (Fix v t) = let a = betaEval3 $ subst3 v a t in a
+betaEval3 (Case (betaEval3 -> S n) _ (v,t) ) = betaEval3 $ subst3 v n t
+betaEval3 (Fix v t) = let a =  betaEval3 $ subst3 v a  t in a
 
 suck (N i) = return $ N $ i + 1
 suck _ = fail "not integer"
@@ -230,9 +220,21 @@ instance IsString Term3 where
     fromString = Var3 . mkName
 
 cata = Lam3 "f" $ Lam3 "g" $ Fix "h" $  Lam3 "x" $ Case "x" "g" ("y",App3 "f" (App3 "h" "y"))
-add = Lam3 "x" $ Lam3 "y" $ App3 (App3 (App3 "cata" (Lam3 "z" $ S "z" ) ) "y") "x"
+add = Lam3 "n" $ Lam3 "m" $ App3 (App3 (App3 "cata" (Lam3 "z" $ S "z" ) ) "m") "n"
 mul = Lam3 "x" $ Lam3 "y" $ App3 (App3 (App3 "cata" (Lam3 "z" $ App3 (App3 "add" "y") "z") ) Z) "x"
 fac = Fix "f" $ Lam3 "x" $ Case "x" (S Z) ("y",App3 (App3 "mul" "x") (App3 "f" "y"))
+
+add' = App3 (Lam3 "cata" add) cata
+mul' = App3 (Lam3 "cata" (App3 (Lam3 "add" mul) add')) cata
+fac' = App3 (Lam3 "mul" fac) mul'
+
+fromInt 0 = Z
+fromInt n = S $ fromInt $ n -1
+
+test1 x y = betaEval3 $ App3 (App3 add' (fromInt x)) (fromInt y)
+test2 x y = betaEval3 $ App3 (App3 mul' (fromInt x)) (fromInt y)
+test3 = betaEval3 . App3 fac' . fromInt
+
 test =
   let
     cataFun = interp cata
