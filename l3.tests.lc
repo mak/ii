@@ -1,0 +1,19 @@
+and = \x:Bool. \y:Bool. if x then y else false;
+or  = \x:Bool. \y:Bool. if x then true else y;
+
+mult = \x:Nat. \m:Nat. letrec h:Nat->Nat = \x:Nat. if zero? x then 0 else m + (h (pred x)) in h x;
+fac  = \x:Nat. letrec h:Nat -> Nat = \x:Nat. if zero? x then 1 else mult x (h (pred x)) in h x;
+
+appendNat = \xs:[Nat]. \ys:[Nat]. letrec h:[Nat] -> [Nat] = \xs:[Nat]. if null? xs then ys else (head xs) ::  (h (tail xs)) in h xs;
+appendBool = \xs:[Bool]. \ys:[Bool].letrec h:[Bool] -> [Bool] = \xs:[Bool]. if null? xs then ys else (head xs) :: (h (tail xs)) in h xs;
+
+concatNat = \xs:[[Nat]]. letrec h:[[Nat]] -> [Nat] = \xs:[[Nat]]. if null? xs then nil:[Nat] else appendNat (head xs) (h (tail xs)) in h xs;
+concatBool = \xs:[[Bool]]. letrec h:[[Bool]] -> [Bool] = \xs:[[Bool]]. if null? xs then nil:[Bool] else appendBool (head xs) (h (tail xs)) in h xs;
+
+sum = letrec h:[Nat] -> Nat = \xs:[Nat]. if null? xs then 0 else (head xs) + (h (tail xs)) in h;
+prod = letrec h:[Nat] -> Nat = \xs:[Nat]. if null? xs then 1 else mult (head xs) (h (tail xs)) in h;
+
+reverse = \xs:[Nat]. letrec h:([Nat],[Nat]) -> [Nat] = \x:([Nat],[Nat]). if null? x.1  then x.2 else h (tail x.1,(head x.1) :: x.2) in h (xs,nil:[Nat]);
+enumList = letrec h:Nat -> [Nat] = \x:Nat. if zero? x then nil:[Nat] else x :: (h (pred x)) in \x:Nat. reverse (h x);
+
+fac' = \x:Nat. prod (enumList x);

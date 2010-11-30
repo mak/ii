@@ -124,6 +124,10 @@ instance Show Term  where
    showsPrec n (Tail t ) = showParen (n > 0) $ showString "tail " .  showsPrec n t
    showsPrec n (Head t ) = showParen (n > 0) $ showString "head " .  showsPrec n t
    showsPrec n (IsNil t) = showParen (n > 0) $ showString "null? " .  showsPrec n t
+   showsPrec n (Loc l) = showParen (n > 0) $ showString "loc: " . showsPrec n l
+   showsPrec n (Ass t1 t2 ) = showParen (n > 0) $ showsPrec n t1 . showString " := " . showsPrec n t2
+   showsPrec n (Deref t) =  showParen (n > 0) $ showChar '!' .  showsPrec n t
+
 
 
 instance Show Type  where
@@ -131,6 +135,7 @@ instance Show Type  where
    showsPrec _ TNat = showString "Nat"
    showsPrec _ TBool = showString "Bool"
    showsPrec _ TUnit = showString " () "
+   showsPrec n (TRef t) = showParen (n > 0) $ showString "Ref " . showsPrec n t
 --   showsPrec _ (TyVar v) = showV v
    showsPrec n (TAbs t s) = showParen (n > 0) $
         showsPrec 1 t  .  showString " -> "   .  shows s
@@ -295,6 +300,8 @@ fv (If t1 t2 t3) = mconcat $ map fv [t1,t2,t3]
 fv (P t) = fv t
 fv (IsNil  t) = fv t
 fv (Case t alt) = fv t `S.union` (mconcat $ map (uncurry S.delete . second fv . snd ) alt)
+fv T = S.empty
+fv F = S.empty
 fv t = err "wtf: "  t
 
 
@@ -416,6 +423,8 @@ evalStep (Var v) = maybe (err "unbound variable: " v) pure . ($v) =<< ask
 evalStep (S n) | isNum n  = fail "value"
 evalStep Unit = fail "value"
 evalStep (Lam _ _) = fail "value"
+evalStep (Nil _) = fail "value"
+evalStep t@(Cons _ _) | isVal t = fail "value"
 evalStep (S e) = S <$> evalStepOrNot e
 evalStep (P Z) = return Z
 evalStep (P (S e)) | isNum e = return e
@@ -492,13 +501,13 @@ emptyMemory = M (listArray (1,200) (replicate 200 Null)) [1..200] 200
 evalStar' = evalStar (const Nothing)
 evalStar env = flip evalStateT emptyMemory .  flip runReaderT  env . evalStarM
     where
-      evalStarM t =  trace (show t ++ " ==>* ") $ (evalStep t >>= evalStarM) `mplus` return t
+      evalStarM t =  {-trace (show t ++ " ==>* ") $-} (evalStep t >>= evalStarM) `mplus` return t
 
 
 evalStarGC' = evalStarGC (const Nothing)
 evalStarGC env = flip evalStateT emptyMemory . flip runReaderT env . evalStarM
     where
-      evalStarM t = trace (show t ++ " gc==>* ")  (evalStep t >>= \t -> gc t >> evalStarM t ) `mplus` return t
+      evalStarM t = {- trace (show t ++ " gc==>* ") -}  (evalStep t >>= \t -> gc t >> evalStarM t ) `mplus` return t
 
 
 locations T = return []
@@ -546,9 +555,9 @@ langDef = haskellStyle
                             , "inl","inr","inj","case","of"
                             , "if","then","else","fix","true"
                             ,"false","nil","head","tail","null?"
-                            ,"Nat","Bool","zero"]
+                            ,"Nat","Bool","zero","ref","Ref"]
           , reservedOpNames = ["::","\\",";","=",".","+","succ","=="
-                              ,"pred","zero?","=>","->","()",":"]
+                              ,"pred","zero?","=>","->","()",":","!",":="]
           }
 
 lang = makeTokenParser langDef
@@ -562,13 +571,14 @@ braces = PTok.braces lang
 commaSep = PTok.commaSep lang
 natural = PTok.natural lang
 
-pTypeP = choice [try$parens pType,pNat,pBool,pTList,pTRec,pTUnit,pTTuple,pTVariants] where
+pTypeP = choice [try$parens pType,pNat,pBool,pTList,pTRec,pTUnit,pTTuple,pTRef,pTVariants] where
     pNat = const TNat <$> reserved "Nat"
     pBool = const TBool <$> reserved "Bool"
     pTList = TList <$> brackets pType
     pTUnit = const TUnit <$> reservedOp "()"
     pTRec = TRec <$> (braces .  commaSep $  (,) <$> ident <*> ( reservedOp ":" >>  pType))
     pTTuple = (TRec .  zip (map show [1..]) )  <$> (parens . commaSep $ pType)
+    pTRef  = const TRef <$> reserved "Ref" <*> pType
     pTVariants = TVariant <$> (angles $ commaSep $ (,) <$> (either show id <$> pLabel) <*> (reservedOp ":" >> pType))
 
 pType = buildExpressionParser [[tyOp "->" AssocRight, tyOp "*" AssocLeft, tyOp "+" AssocLeft]] 	pTypeP
@@ -589,7 +599,7 @@ pTuple = try$(Rec .  zip (map show [1..]) )  <$> (parens . commaSep $ pTerm)
 
 pList = pNil <|> try pCons  where
     pNil = const Nil <$> reserved "nil" <*> (reservedOp ":" >> pType)
-    pCons = Cons  <$> (pPrim <* reservedOp "::") <*>  pList
+    pCons = Cons  <$> (pPrim <* reservedOp "::") <*>  pTerm
 
 pHead = const Head  <$> reserved "head" <*> pTerm
 pTail = const Tail  <$> reserved "tail" <*> pTerm
@@ -621,10 +631,14 @@ pLetRec = mkLetRec <$> (reserved "letrec" >> pVar) <*> (reservedOp ":" >> pType)
                    <*> (reservedOp "=" >> pTerm) <*> (reserved "in"  >> pTerm) where
     mkLetRec v ty t1 t2 = App (Lam (PVar v ty) t2) (Fix (Lam (PVar v ty) t1))
 
-pSeq = mkSeq <$> pTerm <*> (reservedOp ";" >> pTerm) where
+pSeq = try (mkSeq <$> pPrim <*> (reservedOp ";" >> pTerm)) where
     mkSeq t1 t2 = App (Lam PUnit t2) t1
 
-runPp p = parse (PTok.whiteSpace lang >> p) ""
+pRef = const Ref <$> reserved "ref" <*> pTerm
+pAss = try (Ass <$> pPrim <*> (reserved ":=" >> pTerm))
+pDeref = const Deref <$> reservedOp "!" <*> pTerm
+
+runPp p = parse (PTok.whiteSpace lang  >> p) ""
 
 
 
@@ -632,6 +646,7 @@ pTerm = choice [ try$const Unit <$> reservedOp "()" , pLam
                , try pLet, pLetRec, pList
                , pCase, pInl, pInr, pInj
                , pList, pHead, pNull, pTail
+               , pRef,pDeref,pAss
                , pProj, pExpr
                ]
 expr' = choice [pNat,pPred, pSucc,pIsZ, pIf,pPrim] where
@@ -657,8 +672,6 @@ err msg = error . (msg ++ ) . show
 parser' = either (err "parse error: ") id . runPp pDec
 parser = either (err "parse error: ") id . runPp pTerm
 
-foo = "(let f:Nat -> Nat= \\x:Nat. x + 5 in \\y:Nat. f y) 5"
-
 mkF  n t = \x -> if x == mkName n then Just t else  Nothing
 combEnv f g = \x ->  maybe (g x) Just $ f x
 combEnvT f g = \x ->  maybe (g x) id $ f x
@@ -681,7 +694,7 @@ repl = do
                   else
                       put (envT,env,True) >> lift (outputStrLn "gc on")
     Just (':':'l':' ':file)  -> do
-             decs <- either (err "parse error: ") id  <$> (liftIO $ parseFromFile (many1 pDec) file )
+             decs <- either (err "parse error: ") id  <$> (liftIO $ parseFromFile (PTok.whiteSpace lang >> pDec `endBy1` semi lang) file )
              forM_ decs $ \(n,t) ->  addToEnv n t
     Just (':':'t':' ':rest)  -> let t = parser rest in lift $ outputStrLn $ show t ++ " : " ++  show (typeOf envT $ t)
   --  Just (':':'e':rest)   -> lift $ outputStrLn $ show $ env $ parser rest
@@ -698,6 +711,9 @@ repl = do
 
 main = runInputT defaultSettings $ runStateT repl emptyState
 
+
+-- raise e ->^{e} ..
+-- s1;s1
 
 -- wyjatki:
 -- przeliczalny zbior wyjatkow,
