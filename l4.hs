@@ -13,6 +13,7 @@ import Control.Applicative
 import Data.Function
 import Data.List
 import GHC.Exts
+import Debug.Trace
 
 type Label =  String
 data Var = Name String Integer -- a_i
@@ -128,7 +129,7 @@ typeOfM (Var v) = ($v) <$> ask
 typeOfM (S t) = subtypeM TNat t
 typeOfM (P t) = subtypeM TNat t
 typeOfM (If t1 t2 t3) = do
-  TBool <- typeOfM t1 -- subtypeM TBool ewentualnie ;]
+  TBool <- subtypeM TBool t1 --ewentualnie ;]
   ty2 <- typeOfM t2
   ty3 <- typeOfM t3
   case join ty2 ty3 of
