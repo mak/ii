@@ -4,6 +4,7 @@
   NoMonomorphismRestriction
   ,OverloadedStrings
   ,ViewPatterns
+  ,BangPatterns
   #-}
 
 import Control.Monad.Reader hiding (join)
@@ -129,7 +130,7 @@ typeOfM (Var v) = ($v) <$> ask
 typeOfM (S t) = subtypeM TNat t
 typeOfM (P t) = subtypeM TNat t
 typeOfM (If t1 t2 t3) = do
-  TBool <- subtypeM TBool t1 --ewentualnie ;]
+  !ty <- subtypeM TBool t1 --ewentualnie ;]
   ty2 <- typeOfM t2
   ty3 <- typeOfM t3
   case join ty2 ty3 of
