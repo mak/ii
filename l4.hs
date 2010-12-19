@@ -22,7 +22,7 @@ mkName = flip Name 0
 instance Show Var where
     show (Name a i) = a ++ if i == 0 then "" else show i
 
-instance Monad m => Applicative ( ReaderT r m) where
+instance Applicative ( Reader r) where
     (<*>) = ap
     pure = return
 
@@ -86,22 +86,29 @@ subtypeInc TBool TNat = True
 subtypeInc TBool TString = True
 subtypeInc TNat TString = True
 subtypeInc (TAbs t s) (TAbs t1 s1) = subtypeInc t1 t && subtypeInc s s1
+-- TODO: propably wrong, should be corrected
 subtypeInc (TRec ts) (TRec ss) = isPrefixOf sts sss && (and $ zipWith (subtypeInc `on` snd) sts sss) where
-    sts = sortRec ts
-    sss = sortRec ss
+    sts = sortRec ss
+    sss = sortRec ts
 subtypeInc t1 t2 | t1 == t2 = True
 subtypeInc _ _ = False
 
 
+
+
+intersectWithM p f l1 l2 = sequence [ f a b | a <- l1, b <- l2, p a b]
+
+foo f = \(l,x) (_,y) -> ((,) l <$> f x y)
+
 join :: Type -> Type -> Maybe Type
 join (TAbs t s) (TAbs t1 s1) = TAbs <$> meet t t1 <*> join s s1
-join (TRec ts ) (TRec ss) = TRec <$> zipWithM (\(l,t1)(_,t2) -> ((,) l) <$> join t1 t2) (sortRec ts) (sortRec ss)
+join (TRec ts ) (TRec ss) = TRec <$> intersectWithM ((==) `on` fst) (foo join ) ts ss
 join t1 t2  | subtypeInc t1 t2 = return t2
 join t1 t2  | subtypeInc t2 t1 = return t1
 join  _ _ = Nothing
 
 meet (TAbs t s) (TAbs t1 s1) = TAbs <$> join t t1 <*> meet s s1
-meet (TRec ts ) (TRec ss)    =TRec <$> ( ++ (ts \\ ss) ++ ( ss \\ ts)) <$>  zipWithM (\(l,t1)(_,t2) -> ((,) l)<$>meet t1 t2 ) (sortRec ts) (sortRec ss)
+meet (TRec ts ) (TRec ss)    =TRec <$> ( ++ (ts \\ ss) ++ ( ss \\ ts)) <$>  intersectWithM ((==) `on` fst) (foo meet) ts ss
 meet t1 t2  | subtypeInc t1 t2 = return t1
 meet t1 t2  | subtypeInc t2 t1 = return t2
 meet _ _ = Nothing
@@ -121,7 +128,7 @@ typeOfM (Var v) = ($v) <$> ask
 typeOfM (S t) = subtypeM TNat t
 typeOfM (P t) = subtypeM TNat t
 typeOfM (If t1 t2 t3) = do
-  TBool <- typeOfM t1
+  TBool <- typeOfM t1 -- subtypeM TBool ewentualnie ;]
   ty2 <- typeOfM t2
   ty3 <- typeOfM t3
   case join ty2 ty3 of
@@ -161,30 +168,33 @@ canCmp _         = False
 -- te same typy
 isPrim = canCmp
 
-eval Z = return Z
-eval T = return T
-eval F = return F
-eval l@(Lam _ _ _ ) = return l
-eval (Tagged ty t) = cast ty <$> eval t
-eval s@(String _) = return s
-eval (Var v) = ($v) <$> ask
-eval (Len s) = mkLen <$> eval s
-eval (Concat s1 s2) = mkConcat <$> eval s1 <*> eval s2
-eval (S n)   = (S . cast TNat) <$> eval n
-eval (P n)   = (mkP . cast TNat) <$> eval n
-eval (App t1 t2) = do
-  Lam x ty t <- eval t1
-  v <- eval t2
-  local (\r y -> if x == y then Tagged ty v else r y) $ eval t
-eval (If t1 t2 t3)  = mkIf <$> eval t1 <*> eval t2 <*> eval t3
-eval (Fix t) = mkFix =<< eval t
-eval (Rec ts) = Rec <$> mapM (\(l,t) -> ((,) l) <$> eval t) ts
-eval (Proj l t) = mkProj l <$> eval t
+type Env = Var -> Term
+
+evalM :: Term -> Reader Env Term
+evalM Z = return Z
+evalM T = return T
+evalM F = return F
+evalM l@(Lam _ _ _ ) = return l
+evalM (Tagged ty t) = cast ty <$> evalM t
+evalM s@(String _) = return s
+evalM (Var v) = evalM . ($v) =<< ask
+evalM (Len s) = mkLen <$> evalM s
+evalM (Concat s1 s2) = mkConcat <$> evalM s1 <*> evalM s2
+evalM (S n)   = (S . cast TNat) <$> evalM n
+evalM (P n)   = (mkP . cast TNat) <$> evalM n
+evalM (App t1 t2) = do
+  Lam x ty t <- evalM t1
+  v <- evalM t2
+  local (\r y -> if x == y then Tagged ty v else r y) $ evalM t
+evalM (If t1 t2 t3)  = mkIf <$> evalM t1 <*> evalM t2 <*> evalM t3
+evalM (Fix t) = mkFix =<< evalM t
+evalM (Rec ts) = Rec <$> mapM (\(l,t) -> ((,) l) <$> evalM t) ts
+evalM (Proj l t) = mkProj l <$> evalM t
 
 mkIf T t _ = t
 mkIf F _ t = t
 mkLen (cast TString -> String s) = toNat $ length s
-mkFix a@(Lam x ty t) = local (\r y -> if x == y then Tagged ty $ Fix a else r y) $ eval t
+mkFix a@(Lam x ty t) = local (\r y -> if x == y then Tagged ty $ Fix a else r y) $ evalM t
 mkP (S n) = n
 mkConcat (cast TString -> String s1) (cast TString -> String s2) = String $ s1 ++ s2
 mkProj l (Rec ts) = maybe (error "imposible") snd . find ((==l).fst) $ ts
@@ -201,4 +211,9 @@ cast TString T = String "true"
 cast TString F = String "false"
 cast TString Z = String "Z"
 cast TString (S (cast TString -> String s)) = String $ "S " ++ s
+cast (TRec _) r@(Rec _) = r -- TODO: write real case
 cast _ _ = error "not implemented yet"
+
+
+eval env =  flip runReader env . evalM
+eval' = eval (err "unbind type variable: " )
