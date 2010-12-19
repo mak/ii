@@ -10,6 +10,7 @@
 import Control.Monad.Reader hiding (join)
 --import Control.Monad.State hiding (join)
 import Control.Monad hiding (join)
+
 import Control.Applicative
 import Data.Function
 import Data.List
@@ -51,7 +52,7 @@ data Term = Var Var
           | S Term
           | Comp Comp Term Term
           | P Term
-          | Tagged Type Term
+--          | Tagged Type Term
     deriving (Show,Eq)
 
 data Comp = Le | Eq deriving (Eq,Show)
@@ -177,7 +178,7 @@ evalM Z = return Z
 evalM T = return T
 evalM F = return F
 evalM l@(Lam _ _ _ ) = return l
-evalM (Tagged ty t) = cast ty <$> evalM t
+-- evalM (Tagged ty t) = cast ty <$> evalM t
 evalM s@(String _) = return s
 evalM (Var v) = evalM . ($v) =<< ask
 evalM (Len s) = mkLen <$> evalM s
@@ -187,7 +188,7 @@ evalM (P n)   = (mkP . cast TNat) <$> evalM n
 evalM (App t1 t2) = do
   Lam x ty t <- evalM t1
   v <- evalM t2
-  local (\r y -> if x == y then Tagged ty v else r y) $ evalM t
+  local (\r y -> if x == y then {- Tagged ty -} v else r y) $ evalM t
 evalM (If t1 t2 t3)  = mkIf <$> evalM t1 <*> evalM t2 <*> evalM t3
 evalM (Fix t) = mkFix =<< evalM t
 evalM (Rec ts) = Rec <$> mapM (\(l,t) -> ((,) l) <$> evalM t) ts
@@ -196,10 +197,11 @@ evalM (Proj l t) = mkProj l <$> evalM t
 mkIf T t _ = t
 mkIf F _ t = t
 mkLen (cast TString -> String s) = toNat $ length s
-mkFix a@(Lam x ty t) = local (\r y -> if x == y then Tagged ty $ Fix a else r y) $ evalM t
+mkFix a@(Lam x ty t) = local (\r y -> if x == y then {-Tagged ty $-} Fix a else r y) $ evalM t
 mkP (S n) = n
 mkConcat (cast TString -> String s1) (cast TString -> String s2) = String $ s1 ++ s2
 mkProj l (Rec ts) = maybe (error "imposible") snd . find ((==l).fst) $ ts
+mkProj l t = error $ show t
 
 toNat 0 = Z
 toNat n = S $ toNat $ n -1
@@ -213,8 +215,8 @@ cast TString T = String "true"
 cast TString F = String "false"
 cast TString Z = String "Z"
 cast TString (S (cast TString -> String s)) = String $ "S " ++ s
-cast (TRec _) r@(Rec _) = r -- TODO: write real case
-cast _ _ = error "not implemented yet"
+cast (TRec _) r@(Rec _) = r -- jest ok...
+cast _ _ = error "i can't do it"
 
 
 eval env =  flip runReader env . evalM
