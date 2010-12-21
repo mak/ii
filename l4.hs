@@ -16,6 +16,7 @@ import Data.Function
 import Data.List
 import GHC.Exts
 import Debug.Trace
+import Control.Arrow
 
 type Label =  String
 data Var = Name String Integer -- a_i
@@ -55,7 +56,7 @@ data Term = Var Var
 --          | Tagged Type Term
     deriving (Show,Eq)
 
-data Comp = Le | Eq deriving (Eq,Show)
+data Comp = Lt | Eq deriving (Eq,Show)
 
 data Type = TRec [(String,Type)]
           | TString
@@ -89,10 +90,7 @@ subtypeInc TBool TNat = True
 subtypeInc TBool TString = True
 subtypeInc TNat TString = True
 subtypeInc (TAbs t s) (TAbs t1 s1) = subtypeInc t1 t && subtypeInc s s1
--- TODO: propably wrong, should be corrected
-subtypeInc (TRec ts) (TRec ss) = isPrefixOf sts sss && (and $ zipWith (subtypeInc `on` snd) sts sss) where
-    sts = sortRec ss
-    sss = sortRec ts
+subtypeInc (TRec ts) (TRec ss) = all (\(l,t) -> maybe False (subtypeInc t) $ lookup l ts) ss
 subtypeInc t1 t2 | t1 == t2 = True
 subtypeInc _ _ = False
 
@@ -193,6 +191,7 @@ evalM (If t1 t2 t3)  = mkIf <$> evalM t1 <*> evalM t2 <*> evalM t3
 evalM (Fix t) = mkFix =<< evalM t
 evalM (Rec ts) = Rec <$> mapM (\(l,t) -> ((,) l) <$> evalM t) ts
 evalM (Proj l t) = mkProj l <$> evalM t
+evalM (Comp cmp t1 t2) = mkCmp cmp <$> evalM t1 <*> evalM t2
 
 mkIf T t _ = t
 mkIf F _ t = t
@@ -202,6 +201,27 @@ mkP (S n) = n
 mkConcat (cast TString -> String s1) (cast TString -> String s2) = String $ s1 ++ s2
 mkProj l (Rec ts) = maybe (error "imposible") snd . find ((==l).fst) $ ts
 mkProj l t = error $ show t
+mkCmp Eq t1 t2 = case (t1,t2) of
+                   (Z,Z) -> T
+                   (Z,F) -> F
+                   (F,Z) -> T
+                   (S Z,T) -> T
+                   (T,S Z) -> T
+                   (T,T) -> T
+                   (F,F) -> T
+                   (S n,S m) -> mkCmp Eq n m
+--                   (Rec ts,Rec ss) -> all (==T) $ zipWith (mkCmp Eq) ts ss
+                   (String s1,String s2) -> if s1 == s2 then T else F
+                   (_,_) -> F
+mkCmp Lt t1 t2 = case (t1,t2) of
+                   (F,T)   -> T
+                   (Z,T)   -> T
+                   (Z,S _) -> T
+                   (T,S n) -> mkCmp Lt Z n
+                   (S n,S m) -> mkCmp Lt n m
+--                   (Rec ts,Rec ss) -> all (==T) $ zipWith (mkCmp Lt) ts ss
+                   (String s1,String s2) -> if s1 < s2 then T else F
+                   (_,_) -> F
 
 toNat 0 = Z
 toNat n = S $ toNat $ n -1
@@ -215,9 +235,76 @@ cast TString T = String "true"
 cast TString F = String "false"
 cast TString Z = String "Z"
 cast TString (S (cast TString -> String s)) = String $ "S " ++ s
-cast (TRec _) r@(Rec _) = r -- jest ok...
+--cast (TRec _) r@(Rec _) = r -- jest ok...
 cast _ _ = error "i can't do it"
 
 
 eval env =  flip runReader env . evalM
 eval' = eval (err "unbind type variable: " )
+
+coSubtypeM ty t = do
+  (ty',t') <- coTypeOfM t
+  case subTypeCo ty ty of
+    Just f -> return (ty, f t)
+    _      -> error ("can't cast " ++ show ty' ++ " to " ++ show ty)
+
+subTypeCo TBool TNat = Just $ \b -> case b of
+                                      T -> S Z
+                                      F -> Z
+subTypeCo TBool TString = return $ String . show
+subTypeCo TNat TString = return $ String . show
+subTypeCo (TAbs t s) (TAbs t1 s1) = do
+  f <- subTypeCo t1 t
+  f2 <- subTypeCo s s1
+  return $ \(Lam x ty t) -> Lam x ty (App (Lam x t1 (f2 t)) (f $ Var x))
+
+subTypeCo (TRec ts) (TRec ss) = do
+  fs <- mapM (\(l,t) -> maybe Nothing (subTypeCo t) $ lookup l ts) ss
+  return $ \(Rec ts) -> Rec $ undefined
+subTypeCo t1 t2 | t1 == t2 = return id
+subTypeCo _ _ = Nothing
+
+type EnvT = Var -> Type
+
+coTypeOfM :: Term -> Reader EnvT (Type,Term)
+coTypeOfM T = return (TBool,T)
+coTypeOfM F = return (TBool,F)
+coTypeOfM Z = return (TNat,Z)
+coTypeOfM s@(String _ )   = return (TString,s)
+coTypeOfM (Concat t1 t2)  = do
+  (_,t1') <- coSubtypeM TString t1
+  (_,t2') <- coSubtypeM TString t2
+  return (TString,Concat t1' t2')
+coTypeOfM (Len t) = ((,) TNat . Len . snd ) <$> coSubtypeM TString t
+coTypeOfM (Var v) = (flip (,) (Var v) . ($v)) <$> ask
+coTypeOfM (S t) = ((,) TNat . S . snd ) <$> coSubtypeM TNat t
+coTypeOfM (P t) = ((,) TNat . P . snd ) <$> coSubtypeM TNat t
+{-
+coTypeOfM (If t1 t2 t3) = do
+  !ty <- coSubtypeM TBool t1 --ewentualnie ;]
+  ty2 <- coTypeOfM t2
+  ty3 <- coTypeOfM t3
+  case join ty2 ty3 of
+    Just ty -> return ty
+    _       -> fail ("type mismatch: " ++ show ty3 ++ " and  "++ show ty2)
+-} -- musze pomyslec
+coTypeOfM a@(Rec t) =
+    let (ls,tys) = unzip t
+    in (((TRec . zip ls)*** (Rec . zip ls)) . unzip) <$> mapM coTypeOfM tys
+coTypeOfM (Proj l t) = do
+  (TRec ts,t') <- coTypeOfM t
+  return (project l ts,Proj l t')
+coTypeOfM (App t1 t2) = do
+  (ty,t2') <- coTypeOfM t2
+  (TAbs ty1 ty2,t1') <- coTypeOfM t1
+  case  subTypeCo ty ty1 of
+    Just f -> return (ty2,App t1' (f t2'))
+    Nothing ->  fail ("type mismatch: " ++ show ty ++ " and  "++ show ty1)
+coTypeOfM (Lam v ty1 t) = (TAbs ty1 *** Lam v ty1) <$> (local (\r x -> if x == v then  ty1 else r x) $ coTypeOfM t)
+coTypeOfM (Fix t) = do
+  (TAbs ty ty1,t')  <- coTypeOfM t
+  if ty == ty1 then return (ty,t') else  fail ("type mismatch: " ++ show ty ++ " and  "++ show ty1)
+coTypeOfM (Comp cmp t1 t2) = do
+  (ty1,t1') <- coTypeOfM t1
+  (ty2,t2') <- coSubtypeM ty1 t2
+  if  canCmp ty1 then return (TBool,Comp cmp t1' t2') else fail ("can't compare: " ++ show ty1 )
